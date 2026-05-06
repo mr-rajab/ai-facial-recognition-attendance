@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Create account — Attendance Portal</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1.25rem; }
+    h1 { margin-bottom: 0.25rem; }
+    label { display: block; margin-top: 0.65rem; font-weight: 600; }
+    input[type=text], input[type=email], input[type=password] {
+      width: 100%; max-width: 420px; padding: 0.45rem 0.5rem;
+      font-size: 1rem; box-sizing: border-box;
+      border: 1px solid #bbb; border-radius: 4px;
+    }
+    video#vid {
+      width: 100%; max-width: 480px; border-radius: 8px;
+      background: #111; transform: scaleX(-1); transform-origin: center;
+    }
+    .caps { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.5rem 0; max-width: 480px; }
+    button { padding: 0.4rem 0.75rem; cursor: pointer; font-size: 0.97rem; }
+    button[type=submit] { margin-top: 1rem; padding: 0.5rem 1.4rem; font-size: 1rem; }
+    .err  { color: #b00020; white-space: pre-wrap; }
+    .ok   { color: #1a7a1a; }
+    .hint { color: #555; font-size: 0.88rem; margin-top: 0.4rem; }
+    #status { font-size: 0.92rem; color: #444; margin: 0.4rem 0; }
+    a { color: #0b5fa5; }
+  </style>
+</head>
+<body>
+  <h1>Create student account</h1>
+  <p class="hint">Capture your face from <strong>four angles</strong> (upper tilt, left, right, lower tilt), then fill in your details.</p>
+
+  {% if flash %}
+  <p class="err">{{ flash }}</p>
+  {% endif %}
+
+  <form id="f" method="post" action="/register-student">
+    <video id="vid" autoplay playsinline muted></video>
+    <div class="caps">
+      <button type="button" data-pose="upper">Capture upper</button>
+      <button type="button" data-pose="left">Capture left</button>
+      <button type="button" data-pose="right">Capture right</button>
+      <button type="button" data-pose="lower">Capture lower</button>
+    </div>
+    <p id="status">Starting camera…</p>
+
+    <label>Full name</label>
+    <input name="full_name" type="text" required />
+    <label>Student number</label>
+    <input name="student_number" type="text" required />
+    <label>Email</label>
+    <input name="email" type="email" required />
+    <label>Password <span class="hint" style="display:inline">(min 6 characters)</span></label>
+    <input name="password" type="password" minlength="6" required />
+
+    <input type="hidden" name="img_upper" id="img_upper" />
+    <input type="hidden" name="img_left"  id="img_left"  />
+    <input type="hidden" name="img_right" id="img_right" />
+    <input type="hidden" name="img_lower" id="img_lower" />
+
+    <p><button type="submit" id="submitBtn" disabled>Create account</button></p>
+  </form>
+
+  <p class="hint">Already have an account? <a href="/login">Sign in</a></p>
+
+  <script>
+    const poses = ["upper", "left", "right", "lower"];
+    const filled = {};
+    const video = document.getElementById("vid");
+    const status = document.getElementById("status");
+    const submitBtn = document.getElementById("submitBtn");
+
+    async function start() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+        video.srcObject = stream;
+        status.textContent = "Camera on — capture all four angles.";
+      } catch (e) {
+        status.textContent = "Camera error: " + e;
+      }
+    }
+    start();
+
+    function snap(pose) {
+      const c = document.createElement("canvas");
+      c.width = video.videoWidth || 640;
+      c.height = video.videoHeight || 480;
+      const ctx = c.getContext("2d");
+      ctx.save();
+      ctx.translate(c.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, c.width, c.height);
+      ctx.restore();
+      document.getElementById("img_" + pose).value = c.toDataURL("image/jpeg", 0.92);
+      filled[pose] = true;
+      const done = Object.keys(filled).length;
+      status.textContent = "Saved " + pose + ". (" + done + "/4)";
+      submitBtn.disabled = poses.some(p => !filled[p]);
+    }
+
+    document.querySelectorAll("button[data-pose]").forEach(btn => {
+      btn.addEventListener("click", () => snap(btn.getAttribute("data-pose")));
+    });
+  </script>
+</body>
+</html>

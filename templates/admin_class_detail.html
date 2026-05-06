@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ cls.name }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body  { font-family: system-ui, sans-serif; max-width: 1060px; margin: 0 auto; padding: 1rem 1.25rem; }
+    a     { color: #0b5fa5; }
+    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
+    nav a { margin-right: 0.2rem; }
+    .ok   { color: #0a7a2d; }
+    .err  { color: #c0392b; }
+    .meta { color: #555; font-size: 0.9rem; margin: 0.1rem 0 0.75rem; }
+
+    /* two-column layout */
+    .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 0.75rem; }
+    @media (max-width: 700px) { .panels { grid-template-columns: 1fr; } }
+    .panel  { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; }
+    .panel h2 { margin: 0 0 0.75rem; font-size: 1rem; }
+
+    table  { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid #ddd; padding: 0.3rem 0.5rem; text-align: left; }
+    th     { background: #f4f4f4; }
+
+    .btn-remove { background: none; border: none; color: #c0392b; cursor: pointer; font-size: 0.85rem; padding: 0; text-decoration: underline; }
+
+    .search-box  { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid #bbb; border-radius: 4px; font-size: 0.9rem; margin-bottom: 0.5rem; }
+    .student-list{ list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; }
+    .student-list li { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.6rem; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+    .student-list li:last-child { border-bottom: none; }
+    .student-list li:hover { background: #f7f9fc; }
+    .student-list li label { cursor: pointer; flex: 1; margin: 0; }
+    .sel-actions { display: flex; gap: 0.75rem; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    .sel-actions button { background: none; border: none; color: #0b5fa5; cursor: pointer; padding: 0; text-decoration: underline; }
+    .btn-enroll  { margin-top: 0.6rem; width: 100%; padding: 0.45rem; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+    .empty-note  { color: #777; font-size: 0.88rem; }
+    .badge { background: #e8f0fe; color: #1a4fa0; border-radius: 10px; padding: 0.1rem 0.5rem; font-size: 0.8rem; font-weight: 600; margin-left: 0.35rem; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/admin">Dashboard</a> &nbsp;|&nbsp;
+    <a href="/admin/classes">Classes</a> &nbsp;|&nbsp;
+    <strong>{{ cls.name }}</strong> &nbsp;|&nbsp;
+    <a href="/admin/sessions">Sessions</a> &nbsp;|&nbsp;
+    <a href="/admin/reviews">Reviews</a>
+    &emsp; {{ user.email }} &nbsp;·&nbsp; <a href="/logout">Log out</a>
+  </nav>
+
+  <h1>{{ cls.name }}</h1>
+  <p class="meta">
+    {% if cls.description %}{{ cls.description }} &nbsp;·&nbsp; {% endif %}
+    Created {{ cls.created_at }}
+  </p>
+
+  {% if request.query_params.get('ok') %}<p class="ok">Changes saved.</p>{% endif %}
+  {% if flash %}<p class="err">{{ flash }}</p>{% endif %}
+
+  <div class="panels">
+
+    <!-- ── Enrolled students ── -->
+    <div class="panel">
+      <h2>Enrolled students <span class="badge">{{ enrolled | length }}</span></h2>
+      {% if enrolled %}
+      <table>
+        <thead><tr><th>Student no.</th><th>Name</th><th></th></tr></thead>
+        <tbody>
+          {% for e in enrolled %}
+          <tr>
+            <td>{{ e.student_id }}</td>
+            <td>{{ e.name }}</td>
+            <td>
+              <form method="post"
+                    action="/admin/classes/{{ cls.id }}/unenroll/{{ e.enrollment_id }}"
+                    onsubmit="return confirm('Remove {{ e.name }} from this class?');">
+                <button type="submit" class="btn-remove">Remove</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="empty-note">No students enrolled yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- ── Add students ── -->
+    <div class="panel">
+      <h2>Add students <span class="badge">{{ available | length }} available</span></h2>
+      {% if available %}
+      <form method="post" action="/admin/classes/{{ cls.id }}/enroll" id="enroll-form">
+        <input type="text" class="search-box" id="student-search"
+               placeholder="Search by name or student number…" autocomplete="off" />
+        <div class="sel-actions">
+          <button type="button" onclick="selectAll()">Select all</button>
+          <button type="button" onclick="deselectAll()">Deselect all</button>
+          <span id="sel-count" style="color:#555;margin-left:auto;"></span>
+        </div>
+        <ul class="student-list" id="student-list">
+          {% for s in available %}
+          <li data-name="{{ s.name | lower }}" data-num="{{ s.student_id }}">
+            <input type="checkbox" name="student_row_ids" value="{{ s.id }}" id="s{{ s.id }}"
+                   onchange="updateCount()" />
+            <label for="s{{ s.id }}">{{ s.name }} <span style="color:#777;">({{ s.student_id }})</span></label>
+          </li>
+          {% endfor %}
+        </ul>
+        <button type="submit" class="btn-enroll">Enroll selected</button>
+      </form>
+      {% else %}
+      <p class="empty-note">All students are already enrolled in this class.</p>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <script>
+    const search = document.getElementById('student-search');
+    const list   = document.getElementById('student-list');
+    search && search.addEventListener('input', () => {
+      const q = search.value.toLowerCase();
+      list.querySelectorAll('li').forEach(li => {
+        li.style.display = (li.dataset.name.includes(q) || li.dataset.num.includes(q)) ? '' : 'none';
+      });
+      updateCount();
+    });
+    function visibleCheckboxes() {
+      return [...list.querySelectorAll('li:not([style*="none"]) input[type=checkbox]')];
+    }
+    function selectAll()   { visibleCheckboxes().forEach(c => c.checked = true);  updateCount(); }
+    function deselectAll() { visibleCheckboxes().forEach(c => c.checked = false); updateCount(); }
+    function updateCount() {
+      const n = list.querySelectorAll('input:checked').length;
+      const el = document.getElementById('sel-count');
+      if (el) el.textContent = n > 0 ? `${n} selected` : '';
+    }
+  </script>
+
+</body>
+</html>

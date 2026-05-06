@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Dashboard</title>
+  <style>
+    body  { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1rem 1.25rem; }
+    a     { color: #0b5fa5; }
+    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
+    nav a { margin-right: 0.2rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
+    th, td{ border: 1px solid #ccc; padding: 0.35rem 0.6rem; text-align: left; font-size: 0.92rem; }
+    th    { background: #f4f4f4; }
+    .ok   { color: #0a7a2d; }
+    .warn { border-left: 4px solid #e6a817; background: #fffbe6; padding: 0.6rem 1rem; margin: 0.75rem 0; border-radius: 4px; font-size: 0.93rem; }
+    .summary { border: 1px solid #ccc; border-radius: 6px; padding: 0.6rem 1rem; display: inline-block; margin: 0.5rem 0; font-size: 0.93rem; }
+    .btn-delete { background: none; border: none; color: #c0392b; cursor: pointer; font-size: 0.9rem; padding: 0; text-decoration: underline; }
+    ul.actions { list-style: none; padding: 0; margin: 0.5rem 0; }
+    ul.actions li { padding: 0.3rem 0; border-bottom: 1px solid #eee; }
+    ul.actions li:last-child { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <strong>Admin Dashboard</strong> &nbsp;|&nbsp;
+    <a href="/admin/classes">Classes</a> &nbsp;|&nbsp;
+    <a href="/admin/sessions">Sessions</a> &nbsp;|&nbsp;
+    <a href="/admin/reviews">Reviews</a> &nbsp;|&nbsp;
+    <a href="/admin/analytics">Analytics</a> &nbsp;|&nbsp;
+    <a href="/admin/export/records.csv">Export CSV</a>
+    &emsp; {{ user.email }} &nbsp;·&nbsp; <a href="/logout">Log out</a>
+  </nav>
+
+  <h1>Admin Dashboard</h1>
+
+  {% if request.query_params.get('created') %}<p class="ok">Student account created.</p>{% endif %}
+  {% if request.query_params.get('deleted') %}<p class="ok">Student account deleted.</p>{% endif %}
+  {% if request.query_params.get('edited')  %}<p class="ok">Student updated.</p>{% endif %}
+
+  {% if spoof_pending and spoof_pending > 0 %}
+  <div class="warn">
+    <strong>Alert:</strong> {{ spoof_pending }} attendance photo(s) scored as medium/high replay risk.
+    <a href="/admin/reviews">Review now</a> — heuristic only, not proof of cheating.
+  </div>
+  {% endif %}
+
+  <!-- ── Summary ── -->
+  <div class="summary">
+    Active sessions: <strong>{{ active_sessions }}</strong>
+    &emsp;|&emsp;
+    Pending reviews: <strong>{{ pending_reviews }}</strong>
+    &emsp;|&emsp;
+    Students: <strong>{{ students | length }}</strong>
+  </div>
+
+  <hr>
+
+  <!-- ── Actions ── -->
+  <h2>Actions</h2>
+  <ul class="actions">
+    <li><a href="/admin/students/new"><strong>Create student account</strong></a> — name, student number, email, password, four face angles</li>
+    <li><a href="/admin/classes">Manage classes</a> — create classes and enrol students</li>
+    <li><a href="/admin/sessions">Session manager</a> — open/close attendance sessions ({{ active_sessions }} active)</li>
+    <li><a href="/admin/reviews">Review attendance</a> — flagged submissions needing approval ({{ pending_reviews }} pending)</li>
+    <li><a href="/admin/analytics">Analytics &amp; audit log</a> — submission trends and security events</li>
+    <li><a href="/admin/export/records.csv">Download all daily records (CSV)</a></li>
+    <li><a href="/admin/export/audit.csv">Download audit log (CSV)</a></li>
+  </ul>
+
+  <hr>
+
+  <!-- ── Students ── -->
+  <h2>Students</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Name</th><th>Student no.</th><th>Email</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s in students %}
+      <tr>
+        <td>{{ s.id }}</td>
+        <td>{{ s.name }}</td>
+        <td>{{ s.student_id }}</td>
+        <td>{{ s.email or "—" }}</td>
+        <td>
+          <a href="/admin/students/{{ s.id }}/edit">Edit</a>
+          &nbsp;·&nbsp;
+          <form method="post" action="/admin/students/{{ s.id }}/delete"
+                style="display:inline"
+                onsubmit="return confirm('Delete {{ s.name }} ({{ s.student_id }})? This cannot be undone.');">
+            <button type="submit" class="btn-delete">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No students yet. <a href="/admin/students/new">Create one</a>.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</body>
+</html>

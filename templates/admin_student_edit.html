@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Edit Student — {{ s.name }}</title>
+  <style>
+    body  { font-family: system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 1rem 1.25rem; }
+    a     { color: #0b5fa5; }
+    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
+    label { display: block; margin-top: 0.75rem; font-weight: 600; font-size: 0.92rem; }
+    input { width: 100%; padding: 0.4rem 0.5rem; box-sizing: border-box; border: 1px solid #bbb; border-radius: 4px; font-size: 0.93rem; margin-top: 0.2rem; }
+    .hint { font-size: 0.82rem; color: #666; margin-top: 0.2rem; font-weight: normal; }
+    button[type=submit] { margin-top: 1rem; padding: 0.45rem 1.2rem; cursor: pointer; font-size: 0.95rem; }
+    .err  { color: #c0392b; border-left: 3px solid #c0392b; padding-left: 0.75rem; }
+    .warn { border-left: 4px solid #e6a817; background: #fffbe6; padding: 0.6rem 1rem; border-radius: 4px; font-size: 0.9rem; margin: 0.75rem 0; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/admin">Dashboard</a> &nbsp;|&nbsp;
+    <strong>Edit Student</strong>
+    &emsp; {{ user.email }} &nbsp;·&nbsp; <a href="/logout">Log out</a>
+  </nav>
+
+  <h1>Edit Student</h1>
+  <p style="color:#555;font-size:0.93rem;">Student row #{{ s.id }}</p>
+
+  {% if flash %}
+  <p class="err">{{ flash }}</p>
+  {% endif %}
+
+  <div class="warn">
+    <strong>Note:</strong> Changing the student number renames the face gallery entry and enrollment images folder.
+    If the student's face profile was not enrolled, only the database fields are updated.
+  </div>
+
+  <form method="post" action="/admin/students/{{ s.id }}/edit">
+
+    <label>Full name
+      <input name="full_name" type="text" value="{{ s.name }}" required />
+    </label>
+
+    <label>Student number
+      <input name="student_number" type="text" value="{{ s.student_id }}" required />
+      <span class="hint">Used as the face recognition key — renaming is safe but irreversible from here.</span>
+    </label>
+
+    <label>Login email
+      <input name="email" type="email" value="{{ s.login_email or s.student_email or '' }}" required />
+    </label>
+
+    <label>New password
+      <input name="password" type="password" autocomplete="new-password" minlength="6" placeholder="Leave blank to keep current password" />
+      <span class="hint">Minimum 6 characters. Leave blank to keep the existing password.</span>
+    </label>
+
+    <p>
+      <button type="submit">Save changes</button>
+      &nbsp;
+      <a href="/admin">Cancel</a>
+    </p>
+
+  </form>
+
+</body>
+</html>

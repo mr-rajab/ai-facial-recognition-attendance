@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# ML / datasets / models
+datasets/
+data/
+models/
+*.h5
+*.pt
+*.pth
+*.onnx
+*.pkl
+
+# Environment secrets
+.env
+.env.local
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs / outputs
+logs/
+outputs/
+*.log
+
+# Mac / editor
+.DS_Store
+.vscode/
+.idea/

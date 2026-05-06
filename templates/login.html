@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in — Attendance Portal</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 420px; margin: 4rem auto; padding: 0 1.25rem; }
+    a { color: #0b5fa5; }
+    label { display: block; margin: 0.65rem 0 0.2rem; font-weight: 600; }
+    input { width: 100%; padding: 0.45rem 0.5rem; font-size: 1rem; box-sizing: border-box; border: 1px solid #bbb; border-radius: 4px; }
+    button { margin-top: 1rem; padding: 0.5rem 1.4rem; font-size: 1rem; cursor: pointer; }
+    .err  { color: #c0392b; }
+    .warn { border: 1px solid #e6c200; background: #fffbe6; padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.93rem; }
+    .hint { color: #555; font-size: 0.88rem; margin-top: 1rem; }
+    pre   { font-size: 0.82rem; white-space: pre-wrap; background: #f4f4f4; padding: 0.5rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+  <h1>Attendance Portal</h1>
+  <p><a href="/quick-attendance">Quick attendance (no login)</a> — camera recognises your face directly.</p>
+
+  <hr>
+
+  {% if user_count == 0 or nousers %}
+  <div class="warn">
+    <strong>No users yet.</strong> Add to your <code>.env</code>:
+    <pre>BOOTSTRAP_ADMIN_EMAIL=you@university.edu
+BOOTSTRAP_ADMIN_PASSWORD=your-secure-password</pre>
+    Restart the server once, then sign in below.
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <p class="err"><strong>Wrong email or password.</strong> Try again.</p>
+  {% endif %}
+
+  <form method="post" action="/login">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="username"
+           required {% if user_count == 0 %}disabled{% endif %} />
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password"
+           required {% if user_count == 0 %}disabled{% endif %} />
+    <button type="submit" {% if user_count == 0 %}disabled{% endif %}>Sign in</button>
+  </form>
+
+  <p class="hint">Admins manage students and sessions. Students submit one attendance photo per class session.</p>
+
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Submit Attendance</title>
+  <style>
+    body  { font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 1rem 1.25rem; }
+    a     { color: #0b5fa5; }
+    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
+    video#vid { width: 100%; max-width: 480px; border-radius: 6px; background: #111; transform: scaleX(-1); transform-origin: center; margin: 0.75rem 0; }
+    button { margin-top: 0.5rem; padding: 0.45rem 1rem; cursor: pointer; font-size: 0.95rem; }
+    .err    { color: #c0392b; }
+    .info   { border-left: 4px solid #0b5fa5; background: #f0f6ff; padding: 0.5rem 0.85rem; border-radius: 4px; margin: 0.75rem 0; font-size: 0.93rem; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/student">← My Attendance</a>
+    &emsp; <a href="/logout">Log out</a>
+  </nav>
+
+  <h1>Submit Attendance</h1>
+
+  {% if session_info %}
+  <div class="info">
+    <strong>{{ session_info.class_name }}</strong><br>
+    Session started: {{ session_info.start_time }}
+  </div>
+  {% endif %}
+
+  {% set error = request.query_params.get('error') %}
+  {% if error == 'small' %}
+  <p class="err">Photo too small — try again.</p>
+  {% elif error == 'identity' %}
+  <p class="err"><strong>Face did not match.</strong> Only the enrolled student can submit attendance. Try a clear selfie in good light, or ask an admin to update your profile.</p>
+  {% elif error == 'already_submitted' %}
+  <p class="err"><strong>Already submitted</strong> attendance for this session.</p>
+  {% endif %}
+
+  <video id="vid" autoplay playsinline muted></video>
+
+  <form id="f" method="post" action="/student/attendance" enctype="multipart/form-data">
+    {% if session_info %}
+    <input type="hidden" name="session_id" value="{{ session_info.id }}" />
+    {% endif %}
+    <input type="file" name="photo" id="photo" accept="image/jpeg" required hidden />
+    <p>
+      <button type="button" id="cap">Capture from camera</button>
+      <button type="submit" id="go" disabled>Upload attendance</button>
+    </p>
+  </form>
+
+  <script>
+    const video = document.getElementById("vid");
+    const photo = document.getElementById("photo");
+    const go    = document.getElementById("go");
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
+      .then(s => { video.srcObject = s; });
+
+    function drawVideoMirrored(ctx, videoEl, w, h) {
+      ctx.save(); ctx.translate(w, 0); ctx.scale(-1, 1);
+      ctx.drawImage(videoEl, 0, 0, w, h); ctx.restore();
+    }
+
+    document.getElementById("cap").onclick = () => {
+      const c = document.createElement("canvas");
+      c.width = video.videoWidth || 640;
+      c.height = video.videoHeight || 480;
+      const ctx = c.getContext("2d");
+      drawVideoMirrored(ctx, video, c.width, c.height);
+      c.toBlob(b => {
+        const f = new File([b], "attendance.jpg", { type: "image/jpeg" });
+        const dt = new DataTransfer();
+        dt.items.add(f);
+        photo.files = dt.files;
+        go.disabled = false;
+      }, "image/jpeg", 0.92);
+    };
+  </script>
+
+</body>
+</html>
