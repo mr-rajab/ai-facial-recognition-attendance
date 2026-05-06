@@ -151,10 +151,10 @@ Always `cd` into `the_project` first, or paths will be wrong.
 ### 1. Go to the project directory
 
 ```bash
-cd "/Users/ahmadrajab/Projects/4th year uni/Graduation_Project/the_project"
+cd "/path/to/the_project"
 ```
 
-(Adjust the path if your clone lives elsewhere.)
+(Adjust the path to wherever you cloned the repository.)
 
 ### 2. Create and activate a virtual environment
 
@@ -255,7 +255,7 @@ Ensures the DB exists, then inserts **one** attendance record: creates a student
 Required: `--student-id`, `--name`. Optional: `--email`, `--course`, `--status`, `--confidence`.
 
 ```bash
-python src/attendance_logger.py --student-id 230408916 --name "Ahmad Rajab" --email student@example.com --course "CS-Graduation-Project" --status present --confidence 0.9
+python src/attendance_logger.py --student-id 123456789 --name "Student Name" --email student@example.com --course "CS-Graduation-Project" --status present --confidence 0.9
 ```
 
 Inspect the DB with any SQLite browser, or:
@@ -274,10 +274,10 @@ Recommended layout:
 
 ```text
 data/raw/
-  230408916/
+  123456789/
     img_001.jpg
     img_002.jpg
-  220408911/
+  987654321/
     img_001.jpg
 ```
 
@@ -321,8 +321,8 @@ python src/align_faces.py --input-dir data/raw --output-dir data/processed/align
 Put several clear frontal photos in a folder (or pass explicit paths / a short video).
 
 ```bash
-python src/enroll.py --student-id 230408916 --name "Ahmad Rajab" --images-dir data/raw/230408916 --sync-db
-python src/enroll.py --student-id 220408911 --name "Abdallatif" --images data/raw/a.jpg data/raw/b.jpg --video data/raw/clips/demo.mp4
+python src/enroll.py --student-id 123456789 --name "Student Name" --images-dir data/raw/123456789 --sync-db
+python src/enroll.py --student-id 987654321 --name "Another Student" --images data/raw/a.jpg data/raw/b.jpg --video data/raw/clips/demo.mp4
 ```
 
 ---
@@ -340,7 +340,7 @@ python src/match_face.py --probe data/raw/some_face.jpg --k 5
 ### Batch embeddings (optional) — `extract_embeddings.py`
 
 ```bash
-python src/extract_embeddings.py --input-dir data/raw/230408916 --out data/embeddings/batch.npz
+python src/extract_embeddings.py --input-dir data/raw/123456789 --out data/embeddings/batch.npz
 ```
 
 ---
@@ -388,7 +388,7 @@ python src/export_attendance_report.py --session-id 3 --out data/reports/session
 Rebuilds a stronger template using flips, brightness, and a synthetic lower-face mask variant per image.
 
 ```bash
-python src/enroll_augmented.py --student-id 230408916 --name "Ahmad Rajab" --images-dir data/raw/230408916 --sync-db
+python src/enroll_augmented.py --student-id 123456789 --name "Student Name" --images-dir data/raw/123456789 --sync-db
 ```
 
 ---
@@ -399,7 +399,7 @@ Layout:
 
 ```text
 data/eval/
-  230408916/
+  123456789/
     img1.jpg
     img2.jpg
 ```

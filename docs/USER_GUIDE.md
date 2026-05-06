@@ -29,13 +29,13 @@
 4. **Enroll** each student into the embedding gallery:
 
    ```bash
-   python src/enroll.py --student-id 230408916 --name "Your Name" --images-dir data/raw/230408916 --sync-db
+   python src/enroll.py --student-id 123456789 --name "Your Name" --images-dir data/raw/123456789 --sync-db
    ```
 
    For more robust templates (recommended after baseline works):
 
    ```bash
-   python src/enroll_augmented.py --student-id 230408916 --name "Your Name" --images-dir data/raw/230408916 --sync-db
+   python src/enroll_augmented.py --student-id 123456789 --name "Your Name" --images-dir data/raw/123456789 --sync-db
    ```
 
 5. **Run a class session** (live recognition + attendance):

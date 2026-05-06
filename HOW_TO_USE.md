@@ -10,7 +10,7 @@ All commands assume you are inside the `the_project/` directory with the virtual
 ### 1.1 Navigate to the project folder
 
 ```bash
-cd "/Users/ahmadrajab/Projects/4th year uni/Graduation_Project/the_project"
+cd "/path/to/the_project"
 ```
 
 ### 1.2 Create and activate a virtual environment
@@ -63,12 +63,12 @@ Photos are saved to `data/raw/`.
 Move the saved photos into a subfolder named after the student ID:
 ```
 data/raw/
-  230408916/
+  123456789/
     frame_20250101_120000.jpg
     frame_20250101_120010.jpg
 ```
 
-**Option B — copy existing photos** into `data/raw/<STUDENT_ID>/`.
+**Option B — copy existing photos** into `data/raw/<student_id>/`.
 
 Aim for 5–10 varied poses per student (slightly different angles, lighting).
 
@@ -76,9 +76,9 @@ Aim for 5–10 varied poses per student (slightly different angles, lighting).
 
 ```bash
 python src/enroll.py \
-  --student-id 230408916 \
-  --name "Ahmad Rajab" \
-  --images-dir data/raw/230408916 \
+  --student-id 123456789 \
+  --name "Student Name" \
+  --images-dir data/raw/123456789 \
   --sync-db
 ```
 
@@ -87,9 +87,9 @@ python src/enroll.py \
 **For a more robust template** (recommended), use augmented enrollment:
 ```bash
 python src/enroll_augmented.py \
-  --student-id 230408916 \
-  --name "Ahmad Rajab" \
-  --images-dir data/raw/230408916 \
+  --student-id 123456789 \
+  --name "Student Name" \
+  --images-dir data/raw/123456789 \
   --sync-db
 ```
 
@@ -219,10 +219,10 @@ Prints the top-5 matches with cosine similarity scores.
 Prepare a labeled test set:
 ```
 data/eval/
-  230408916/
+  123456789/
     test1.jpg
     test2.jpg
-  220408911/
+  987654321/
     test1.jpg
 ```
 
