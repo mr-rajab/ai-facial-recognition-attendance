@@ -1,72 +1,61 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Session {{ session.id }} — {{ session.course }}</title>
-  <style>
-    body  { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1rem 1.25rem; }
-    a     { color: #0b5fa5; }
-    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
-    nav a { margin-right: 0.2rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
-    th, td{ border: 1px solid #ccc; padding: 0.35rem 0.5rem; text-align: left; font-size: 0.92rem; }
-    th    { background: #f4f4f4; }
-    button { padding: 0.35rem 0.75rem; cursor: pointer; }
-    dl    { margin: 0.5rem 0; }
-    dt    { font-weight: 600; display: inline; }
-    dd    { display: inline; margin: 0; }
-    dd::after { content: '\A'; white-space: pre; }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
 
-  <nav>
-    <a href="/admin">Dashboard</a> &nbsp;|&nbsp;
-    <a href="/admin/sessions">Sessions</a> &nbsp;|&nbsp;
-    <strong>Session {{ session.id }}</strong>
-    &emsp; <a href="/logout">Log out</a>
-  </nav>
+{% block title %}Session {{ session.id }} - Attendance Portal{% endblock %}
+{% block eyebrow %}Session detail{% endblock %}
+{% block heading %}Session {{ session.id }} - {{ session.course }}{% endblock %}
+{% block description %}Started {{ session.start_time }}. {% if session.end_time %}Ended {{ session.end_time }}.{% else %}Still open.{% endif %}{% endblock %}
+{% block page_actions %}
+  <a class="btn btn-ghost" href="/admin/sessions">All sessions</a>
+  <a class="btn btn-ghost" href="/export/session/{{ session.id }}.csv">Download CSV</a>
+  {% if not session.end_time %}
+  <form class="inline-form" method="post" action="/sessions/{{ session.id }}/close" data-confirm="Close this session?">
+    <button class="btn btn-soft-danger" type="submit">Close session</button>
+  </form>
+  {% endif %}
+{% endblock %}
 
-  <h1>Session {{ session.id }} — {{ session.course }}</h1>
+{% block content %}
+<section class="grid grid-2 align-start">
+  <div class="panel">
+    <div class="panel-header"><div><h2>Session details</h2><p>Live recognition session metadata.</p></div></div>
+    <dl class="detail-list">
+      <dt>Started</dt><dd>{{ session.start_time }}</dd>
+      <dt>Ended</dt><dd>{{ session.end_time or "Still open" }}</dd>
+      <dt>Course</dt><dd>{{ session.course }}</dd>
+    </dl>
+  </div>
+  <div class="panel">
+    <div class="panel-header"><div><h2>Records</h2><p>{{ rows | length }} attendance row{{ 's' if rows | length != 1 else '' }} recorded.</p></div></div>
+    <span class="badge badge-blue">{{ rows | length }} rows</span>
+  </div>
+</section>
 
-  <dl>
-    <dt>Started:</dt> <dd>{{ session.start_time }}</dd>
-    <dt>Ended:</dt>   <dd>{{ session.end_time or "still open" }}</dd>
-  </dl>
-
-  <p>
-    <a href="/export/session/{{ session.id }}.csv">Download CSV</a>
-    {% if not session.end_time %}
-    &nbsp;·&nbsp;
-    <form method="post" action="/sessions/{{ session.id }}/close" style="display:inline"
-          onsubmit="return confirm('Close this session?');">
-      <button type="submit">Close session</button>
-    </form>
-    {% endif %}
-  </p>
-
-  <hr>
-
-  <h2>Attendance records</h2>
-  <table>
-    <thead>
-      <tr><th>Student ID</th><th>Name</th><th>Time</th><th>Status</th><th>Confidence</th></tr>
-    </thead>
-    <tbody>
-      {% for r in rows %}
-      <tr>
-        <td>{{ r.student_id }}</td>
-        <td>{{ r.name }}</td>
-        <td>{{ r.timestamp }}</td>
-        <td>{{ r.status }}</td>
-        <td>{{ "%.3f" % r.confidence }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5">No attendance rows for this session.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-</body>
-</html>
+<section class="panel mt-4">
+  <div class="panel-header">
+    <div>
+      <h2>Attendance records</h2>
+      <p>Recognition output for this session.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Student ID</th><th>Name</th><th>Time</th><th>Status</th><th>Confidence</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.student_id }}</td>
+          <td><strong>{{ r.name }}</strong></td>
+          <td>{{ r.timestamp }}</td>
+          <td><span class="status-badge status-{{ r.status }}">{{ r.status }}</span></td>
+          <td>{{ "%.3f" % r.confidence }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5"><div class="empty-state">No attendance rows for this session.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

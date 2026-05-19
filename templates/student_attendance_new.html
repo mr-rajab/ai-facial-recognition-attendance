@@ -1,85 +1,91 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Submit Attendance</title>
-  <style>
-    body  { font-family: system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 1rem 1.25rem; }
-    a     { color: #0b5fa5; }
-    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
-    video#vid { width: 100%; max-width: 480px; border-radius: 6px; background: #111; transform: scaleX(-1); transform-origin: center; margin: 0.75rem 0; }
-    button { margin-top: 0.5rem; padding: 0.45rem 1rem; cursor: pointer; font-size: 0.95rem; }
-    .err    { color: #c0392b; }
-    .info   { border-left: 4px solid #0b5fa5; background: #f0f6ff; padding: 0.5rem 0.85rem; border-radius: 4px; margin: 0.75rem 0; font-size: 0.93rem; }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
 
-  <nav>
-    <a href="/student">← My Attendance</a>
-    &emsp; <a href="/logout">Log out</a>
-  </nav>
+{% block title %}Submit Attendance - Attendance Portal{% endblock %}
+{% block eyebrow %}Student{% endblock %}
+{% block heading %}Submit attendance{% endblock %}
+{% block description %}Capture a clear selfie for the open class session. The face must match your enrolled profile.{% endblock %}
+{% block page_actions %}<a class="btn btn-ghost" href="/student">My Attendance</a>{% endblock %}
 
-  <h1>Submit Attendance</h1>
+{% block content %}
+{% if session_info %}
+<div class="alert alert-info">
+  <p><strong>{{ session_info.class_name }}</strong><br>Session started: {{ session_info.start_time }}</p>
+</div>
+{% endif %}
 
-  {% if session_info %}
-  <div class="info">
-    <strong>{{ session_info.class_name }}</strong><br>
-    Session started: {{ session_info.start_time }}
-  </div>
-  {% endif %}
+{% set error = request.query_params.get('error') %}
+{% if error == 'small' %}
+<div class="alert alert-danger"><p>Photo too small. Try again with your face centered in the frame.</p></div>
+{% elif error == 'identity' %}
+<div class="alert alert-danger"><p><strong>Face did not match.</strong> Only the enrolled student can submit attendance. Try a clear selfie in good light, or ask an admin to update your profile.</p></div>
+{% elif error == 'already_submitted' %}
+<div class="alert alert-warning"><p><strong>Already submitted.</strong> Attendance for this session has already been recorded.</p></div>
+{% endif %}
 
-  {% set error = request.query_params.get('error') %}
-  {% if error == 'small' %}
-  <p class="err">Photo too small — try again.</p>
-  {% elif error == 'identity' %}
-  <p class="err"><strong>Face did not match.</strong> Only the enrolled student can submit attendance. Try a clear selfie in good light, or ask an admin to update your profile.</p>
-  {% elif error == 'already_submitted' %}
-  <p class="err"><strong>Already submitted</strong> attendance for this session.</p>
-  {% endif %}
+<div class="camera-layout">
+  <section class="camera-card" aria-labelledby="selfie-title">
+    <div class="panel-header">
+      <div>
+        <h2 id="selfie-title">Camera preview</h2>
+        <p>Face the camera in good light, then capture your attendance photo.</p>
+      </div>
+    </div>
+    <video id="vid" class="camera-preview" autoplay playsinline muted></video>
+  </section>
 
-  <video id="vid" autoplay playsinline muted></video>
+  <section class="panel" aria-labelledby="submit-title">
+    <div class="panel-header">
+      <div>
+        <h2 id="submit-title">Submit photo</h2>
+        <p>The upload button is enabled after a camera capture is ready.</p>
+      </div>
+    </div>
 
-  <form id="f" method="post" action="/student/attendance" enctype="multipart/form-data">
-    {% if session_info %}
-    <input type="hidden" name="session_id" value="{{ session_info.id }}" />
-    {% endif %}
-    <input type="file" name="photo" id="photo" accept="image/jpeg" required hidden />
-    <p>
-      <button type="button" id="cap">Capture from camera</button>
-      <button type="submit" id="go" disabled>Upload attendance</button>
-    </p>
-  </form>
+    <form id="f" method="post" action="/student/attendance" enctype="multipart/form-data">
+      {% if session_info %}
+      <input type="hidden" name="session_id" value="{{ session_info.id }}" />
+      {% endif %}
+      <input type="file" name="photo" id="photo" accept="image/jpeg" required hidden />
+      <div class="form-actions">
+        <button class="btn btn-secondary" type="button" id="cap">Capture from camera</button>
+        <button class="btn" type="submit" id="go" disabled>Upload attendance</button>
+      </div>
+      <p id="capture-status" class="progress-text" role="status">Waiting for capture.</p>
+    </form>
+  </section>
+</div>
+{% endblock %}
 
-  <script>
-    const video = document.getElementById("vid");
-    const photo = document.getElementById("photo");
-    const go    = document.getElementById("go");
+{% block scripts %}
+<script>
+  const video = document.getElementById("vid");
+  const photo = document.getElementById("photo");
+  const go = document.getElementById("go");
+  const status = document.getElementById("capture-status");
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
-      .then(s => { video.srcObject = s; });
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
+    .then(s => { video.srcObject = s; status.textContent = "Camera ready."; })
+    .catch(e => { status.textContent = "Camera error: " + e; });
 
-    function drawVideoMirrored(ctx, videoEl, w, h) {
-      ctx.save(); ctx.translate(w, 0); ctx.scale(-1, 1);
-      ctx.drawImage(videoEl, 0, 0, w, h); ctx.restore();
-    }
+  function drawVideoMirrored(ctx, videoEl, w, h) {
+    ctx.save(); ctx.translate(w, 0); ctx.scale(-1, 1);
+    ctx.drawImage(videoEl, 0, 0, w, h); ctx.restore();
+  }
 
-    document.getElementById("cap").onclick = () => {
-      const c = document.createElement("canvas");
-      c.width = video.videoWidth || 640;
-      c.height = video.videoHeight || 480;
-      const ctx = c.getContext("2d");
-      drawVideoMirrored(ctx, video, c.width, c.height);
-      c.toBlob(b => {
-        const f = new File([b], "attendance.jpg", { type: "image/jpeg" });
-        const dt = new DataTransfer();
-        dt.items.add(f);
-        photo.files = dt.files;
-        go.disabled = false;
-      }, "image/jpeg", 0.92);
-    };
-  </script>
-
-</body>
-</html>
+  document.getElementById("cap").onclick = () => {
+    const c = document.createElement("canvas");
+    c.width = video.videoWidth || 640;
+    c.height = video.videoHeight || 480;
+    const ctx = c.getContext("2d");
+    drawVideoMirrored(ctx, video, c.width, c.height);
+    c.toBlob(b => {
+      const f = new File([b], "attendance.jpg", { type: "image/jpeg" });
+      const dt = new DataTransfer();
+      dt.items.add(f);
+      photo.files = dt.files;
+      go.disabled = false;
+      status.textContent = "Photo captured. You can upload attendance now.";
+    }, "image/jpeg", 0.92);
+  };
+</script>
+{% endblock %}

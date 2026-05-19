@@ -1,115 +1,116 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quick attendance</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
-    video, canvas { width: 100%; max-width: 640px; border-radius: 8px; background: #111; display: block; }
-    /* Mirror preview so left/right match a real mirror (selfie-style). */
-    video#vid { transform: scaleX(-1); transform-origin: center center; margin-bottom: 0.75rem; }
-    canvas { display: none; }
-    .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.75rem 0; }
-    button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
-    .msg { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; font-size: 1.05rem; }
-    .ok { background: #e8f5e9; border: 1px solid #81c784; }
-    .err { background: #ffebee; border: 1px solid #e57373; }
-    .hint { color: #555; font-size: 0.9rem; margin-top: 0.5rem; }
-    a { color: #1565c0; }
-  </style>
-</head>
-<body>
-  <h1>Quick attendance</h1>
-  <p>Allow camera access, face the webcam, then capture. The system matches your face to enrolled students and greets you by name.</p>
+{% extends "base.html" %}
 
-  <video id="vid" playsinline autoplay muted></video>
-  <canvas id="cv"></canvas>
-  <div class="row">
-    <button type="button" id="start">Start camera</button>
-    <button type="button" id="snap" disabled>Capture &amp; recognize</button>
-    <a href="/login">Back to sign in</a>
-  </div>
-  <p class="hint">This does not record attendance or log you in — it only shows who the model thinks you are. Use <strong>Sign in</strong> to submit official daily attendance.</p>
-  <div id="out" class="msg" style="display:none;"></div>
+{% block title %}Quick Attendance - Attendance Portal{% endblock %}
+{% block body_class %}auth-page{% endblock %}
 
-  <script>
-    const vid = document.getElementById('vid');
-    const cv = document.getElementById('cv');
-    const ctx = cv.getContext('2d');
-    const startBtn = document.getElementById('start');
-    const snapBtn = document.getElementById('snap');
-    const out = document.getElementById('out');
+{% block body %}
+<main class="auth-shell" id="main">
+  <section class="auth-card auth-wide" aria-labelledby="quick-title">
+    <div class="auth-brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3.25 4.75 6.7v5.45c0 4.45 3.02 7.32 7.25 8.6 4.23-1.28 7.25-4.15 7.25-8.6V6.7L12 3.25Zm0 2.18 5.25 2.5v4.22c0 3.2-1.96 5.35-5.25 6.49-3.29-1.14-5.25-3.29-5.25-6.49V7.93L12 5.43Zm0 3.07a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Zm-4 8.1c.79-1.55 2.18-2.35 4-2.35s3.21.8 4 2.35c-.98.75-2.31 1.35-4 1.84-1.69-.49-3.02-1.09-4-1.84Z" /></svg>
+      </span>
+      <div>
+        <h1 id="quick-title">Quick attendance</h1>
+        <p>Check who the model recognizes before submitting official attendance.</p>
+      </div>
+    </div>
 
-    /** Draw frame horizontally flipped so the saved image matches the mirrored preview. */
-    function drawVideoMirrored(context, videoEl, w, h) {
-      context.save();
-      context.translate(w, 0);
-      context.scale(-1, 1);
-      context.drawImage(videoEl, 0, 0, w, h);
-      context.restore();
+    <div class="alert alert-info">
+      <p>This page does not record attendance or log you in. Students should sign in to submit official class attendance.</p>
+    </div>
+
+    <div class="camera-card">
+      <video id="vid" class="camera-preview" playsinline autoplay muted></video>
+      <canvas id="cv" hidden></canvas>
+      <div class="camera-toolbar">
+        <button class="btn btn-secondary" type="button" id="start">Start camera</button>
+        <button class="btn" type="button" id="snap" disabled>Capture and recognize</button>
+        <a class="btn btn-ghost" href="/login">Back to sign in</a>
+      </div>
+      <div id="out" class="capture-output" role="status" aria-live="polite"></div>
+    </div>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const vid = document.getElementById('vid');
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const startBtn = document.getElementById('start');
+  const snapBtn = document.getElementById('snap');
+  const out = document.getElementById('out');
+
+  function drawVideoMirrored(context, videoEl, w, h) {
+    context.save();
+    context.translate(w, 0);
+    context.scale(-1, 1);
+    context.drawImage(videoEl, 0, 0, w, h);
+    context.restore();
+  }
+
+  function show(text, ok) {
+    out.className = 'capture-output ' + (ok ? 'ok' : 'err');
+    out.textContent = text;
+  }
+
+  startBtn.addEventListener('click', async () => {
+    out.className = 'capture-output';
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      vid.srcObject = stream;
+      await vid.play();
+      snapBtn.disabled = false;
+      startBtn.textContent = 'Camera ready';
+      startBtn.disabled = true;
+    } catch (e) {
+      show('Could not open camera: ' + (e.message || String(e)), false);
     }
+  });
 
-    function show(text, ok) {
-      out.style.display = 'block';
-      out.className = 'msg ' + (ok ? 'ok' : 'err');
-      out.textContent = text;
+  snapBtn.addEventListener('click', async () => {
+    out.className = 'capture-output';
+    const w = vid.videoWidth, h = vid.videoHeight;
+    if (!w || !h) {
+      show('Camera not ready. Click Start camera first.', false);
+      return;
     }
-
-    startBtn.addEventListener('click', async () => {
-      out.style.display = 'none';
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-        vid.srcObject = stream;
-        await vid.play();
-        snapBtn.disabled = false;
-      } catch (e) {
-        show('Could not open camera: ' + (e.message || String(e)), false);
-      }
-    });
-
-    snapBtn.addEventListener('click', async () => {
-      out.style.display = 'none';
-      const w = vid.videoWidth, h = vid.videoHeight;
-      if (!w || !h) {
-        show('Camera not ready. Click Start camera first.', false);
-        return;
-      }
-      cv.width = w;
-      cv.height = h;
-      drawVideoMirrored(ctx, vid, w, h);
-      const blob = await new Promise((resolve) => cv.toBlob(resolve, 'image/jpeg', 0.88));
-      if (!blob) {
-        show('Could not build image.', false);
-        return;
-      }
-      snapBtn.disabled = true;
-      const fd = new FormData();
-      fd.append('photo', blob, 'capture.jpg');
-      try {
-        const r = await fetch('/api/quick-attendance', { method: 'POST', body: fd });
-        const j = await r.json();
-        if (j.ok) {
-          let msg = j.greeting || ('Hello, ' + (j.name || j.student_id));
-          if (j.spoof_warning) {
-            msg += '\n\n' + j.spoof_warning;
-          } else if (j.presentation && (j.presentation.risk === 'medium' || j.presentation.risk === 'high')) {
-            msg += '\n\nReplay check: ' + j.presentation.risk + ' risk (score ' + j.presentation.score + '). Same signal is stored for admins on real attendance.';
-          }
-          show(msg, true);
-        } else {
-          let err = j.message || 'Recognition failed.';
-          if (j.presentation && (j.presentation.risk === 'medium' || j.presentation.risk === 'high')) {
-            err += ' — Replay check: ' + j.presentation.risk + ' risk.';
-          }
-          show(err, false);
+    cv.width = w;
+    cv.height = h;
+    drawVideoMirrored(ctx, vid, w, h);
+    const blob = await new Promise((resolve) => cv.toBlob(resolve, 'image/jpeg', 0.88));
+    if (!blob) {
+      show('Could not build image.', false);
+      return;
+    }
+    snapBtn.disabled = true;
+    const fd = new FormData();
+    fd.append('photo', blob, 'capture.jpg');
+    try {
+      const r = await fetch('/api/quick-attendance', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (j.ok) {
+        let msg = j.greeting || ('Hello, ' + (j.name || j.student_id));
+        if (j.spoof_warning) {
+          msg += '\n\n' + j.spoof_warning;
+        } else if (j.presentation && (j.presentation.risk === 'medium' || j.presentation.risk === 'high')) {
+          msg += '\n\nReplay check: ' + j.presentation.risk + ' risk (score ' + j.presentation.score + '). Same signal is stored for admins on real attendance.';
         }
-      } catch (e) {
-        show('Network error: ' + (e.message || String(e)), false);
-      } finally {
-        snapBtn.disabled = false;
+        show(msg, true);
+      } else {
+        let err = j.message || 'Recognition failed.';
+        if (j.presentation && (j.presentation.risk === 'medium' || j.presentation.risk === 'high')) {
+          err += ' - Replay check: ' + j.presentation.risk + ' risk.';
+        }
+        show(err, false);
       }
-    });
-  </script>
-</body>
-</html>
+    } catch (e) {
+      show('Network error: ' + (e.message || String(e)), false);
+    } finally {
+      snapBtn.disabled = false;
+    }
+  });
+</script>
+{% endblock %}

@@ -7,6 +7,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -87,6 +88,7 @@ app.add_middleware(
     secret_key=os.environ.get("SECRET_KEY", "change-me-set-SECRET_KEY-in-production"),
     https_only=False,
 )
+app.mount("/static", StaticFiles(directory=os.path.join(ROOT, "static")), name="static")
 
 app.include_router(build_router(templates, ROOT))
 

@@ -1,122 +1,113 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Session Manager</title>
-  <style>
-    body  { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1rem 1.25rem; }
-    a     { color: #0b5fa5; }
-    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
-    nav a { margin-right: 0.2rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
-    th, td{ border: 1px solid #ccc; padding: 0.35rem 0.6rem; text-align: left; font-size: 0.92rem; }
-    th    { background: #f4f4f4; }
-    .ok   { color: #0a7a2d; }
-    .err  { color: #c0392b; }
-    fieldset { border: 1px solid #ccc; border-radius: 6px; padding: 0.75rem 1rem; max-width: 420px; }
-    legend   { font-weight: 600; padding: 0 0.4rem; }
-    label    { display: block; margin-top: 0.4rem; font-size: 0.9rem; font-weight: 600; }
-    select   { width: 100%; padding: 0.35rem 0.5rem; margin-top: 0.2rem; border: 1px solid #bbb; border-radius: 4px; font-size: 0.9rem; }
-    button[type=submit] { margin-top: 0.6rem; padding: 0.4rem 1rem; cursor: pointer; }
-    .btn-close { background: none; border: 1px solid #c0392b; color: #c0392b; border-radius: 4px; cursor: pointer; font-size: 0.85rem; padding: 0.2rem 0.6rem; }
-    .badge { background: #e6f4ea; color: #0a7a2d; border: 1px solid #a8d5b5; border-radius: 10px; padding: 0.1rem 0.55rem; font-size: 0.8rem; font-weight: 600; }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
 
-  <nav>
-    <a href="/admin">Dashboard</a> &nbsp;|&nbsp;
-    <a href="/admin/classes">Classes</a> &nbsp;|&nbsp;
-    <strong>Sessions</strong> &nbsp;|&nbsp;
-    <a href="/admin/reviews">Reviews</a> &nbsp;|&nbsp;
-    <a href="/admin/analytics">Analytics</a>
-    &emsp; {{ user.email }} &nbsp;·&nbsp; <a href="/logout">Log out</a>
-  </nav>
+{% block title %}Sessions - Attendance Portal{% endblock %}
+{% block eyebrow %}Admin{% endblock %}
+{% block heading %}Session Manager{% endblock %}
+{% block description %}Open class attendance sessions, monitor active sessions, and review recent closed sessions.{% endblock %}
 
-  <h1>Session Manager</h1>
+{% block content %}
+{% if request.query_params.get('opened') %}
+<div class="alert alert-success"><p>Session opened.</p></div>
+{% endif %}
+{% if flash %}
+<div class="alert alert-danger"><p>{{ flash }}</p></div>
+{% endif %}
 
-  {% if request.query_params.get('opened') %}<p class="ok">Session opened.</p>{% endif %}
-  {% if flash %}<p class="err">{{ flash }}</p>{% endif %}
+<section class="panel" aria-labelledby="open-session-title">
+  <div class="panel-header">
+    <div>
+      <h2 id="open-session-title">Open a new session</h2>
+      <p>Start attendance collection for one class.</p>
+    </div>
+  </div>
+  {% if classes %}
+  <form class="form-grid form-grid-2" method="post" action="/admin/sessions/new">
+    <label class="field">Select class
+      <select name="class_id" required>
+        <option value="" disabled selected>Choose a class</option>
+        {% for c in classes %}
+        <option value="{{ c.id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="form-actions align-end no-mt">
+      <button class="btn" type="submit">Open session</button>
+    </div>
+  </form>
+  {% else %}
+  <div class="empty-state">No classes yet. <a href="/admin/classes">Create a class first.</a></div>
+  {% endif %}
+</section>
 
-  <!-- ── Open a session ── -->
-  <fieldset>
-    <legend>Open a new session</legend>
-    {% if classes %}
-    <form method="post" action="/admin/sessions/new">
-      <label>Select class
-        <select name="class_id" required>
-          <option value="" disabled selected>— choose a class —</option>
-          {% for c in classes %}
-          <option value="{{ c.id }}">{{ c.name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <button type="submit">Open session</button>
-    </form>
-    {% else %}
-    <p style="margin:0;color:#555;font-size:0.9rem;">No classes yet. <a href="/admin/classes">Create a class first.</a></p>
-    {% endif %}
-  </fieldset>
+<section class="panel mt-4">
+  <div class="panel-header">
+    <div>
+      <h2>Active sessions</h2>
+      <p>Currently open attendance windows.</p>
+    </div>
+    <span class="badge badge-green">{{ active | length }} open</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>ID</th><th>Class</th><th>Started</th><th>Students marked</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for s in active %}
+        <tr>
+          <td>{{ s.id }}</td>
+          <td><strong>{{ s.class_name or s.course }}</strong></td>
+          <td>{{ s.start_time }}</td>
+          <td><span class="badge badge-blue">{{ s.attendance_count }}</span></td>
+          <td>
+            <div class="actions-cell">
+              <a class="btn btn-ghost btn-sm" href="/sessions/{{ s.id }}">View</a>
+              <form class="inline-form" method="post" action="/sessions/{{ s.id }}/close?back=/admin/sessions" data-confirm="Close this session?">
+                <button type="submit" class="btn btn-soft-danger btn-sm">Close</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5"><div class="empty-state">No active sessions.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 
-  <hr>
-
-  <!-- ── Active sessions ── -->
-  <h2>Active sessions &nbsp;<span class="badge">{{ active | length }} open</span></h2>
-  <table>
-    <thead>
-      <tr><th>ID</th><th>Class</th><th>Started</th><th>Students marked</th><th>Actions</th></tr>
-    </thead>
-    <tbody>
-      {% for s in active %}
-      <tr>
-        <td>{{ s.id }}</td>
-        <td>{{ s.class_name or s.course }}</td>
-        <td>{{ s.start_time }}</td>
-        <td>{{ s.attendance_count }}</td>
-        <td>
-          <a href="/sessions/{{ s.id }}">View</a>
-          &nbsp;
-          <form method="post" action="/sessions/{{ s.id }}/close?back=/admin/sessions"
-                style="display:inline"
-                onsubmit="return confirm('Close this session?');">
-            <button type="submit" class="btn-close">Close</button>
-          </form>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5">No active sessions.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <hr>
-
-  <!-- ── Recent closed sessions ── -->
-  <h2>Recent closed sessions</h2>
-  <table>
-    <thead>
-      <tr><th>ID</th><th>Class</th><th>Started</th><th>Ended</th><th>Students marked</th><th>Actions</th></tr>
-    </thead>
-    <tbody>
-      {% for s in recent %}
-      <tr>
-        <td>{{ s.id }}</td>
-        <td>{{ s.class_name or s.course }}</td>
-        <td>{{ s.start_time }}</td>
-        <td>{{ s.end_time }}</td>
-        <td>{{ s.attendance_count }}</td>
-        <td>
-          <a href="/sessions/{{ s.id }}">View</a>
-          &nbsp;·&nbsp;
-          <a href="/export/session/{{ s.id }}.csv">CSV</a>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6">No closed sessions yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-</body>
-</html>
+<section class="panel mt-4">
+  <div class="panel-header">
+    <div>
+      <h2>Recent closed sessions</h2>
+      <p>Latest completed sessions and exports.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>ID</th><th>Class</th><th>Started</th><th>Ended</th><th>Students marked</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for s in recent %}
+        <tr>
+          <td>{{ s.id }}</td>
+          <td><strong>{{ s.class_name or s.course }}</strong></td>
+          <td>{{ s.start_time }}</td>
+          <td>{{ s.end_time }}</td>
+          <td><span class="badge">{{ s.attendance_count }}</span></td>
+          <td>
+            <div class="actions-cell">
+              <a class="btn btn-ghost btn-sm" href="/sessions/{{ s.id }}">View</a>
+              <a class="btn btn-ghost btn-sm" href="/export/session/{{ s.id }}.csv">CSV</a>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6"><div class="empty-state">No closed sessions yet.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

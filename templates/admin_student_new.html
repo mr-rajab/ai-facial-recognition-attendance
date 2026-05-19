@@ -1,117 +1,113 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Create Student Account</title>
-  <style>
-    body  { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 1rem 1.25rem; }
-    a     { color: #0b5fa5; }
-    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
-    nav a { margin-right: 0.2rem; }
-    label { display: block; margin-top: 0.65rem; font-weight: 600; font-size: 0.92rem; }
-    input[type=text], input[type=email], input[type=password] {
-      width: 100%; max-width: 400px; padding: 0.4rem 0.5rem; box-sizing: border-box;
-      border: 1px solid #bbb; border-radius: 4px; font-size: 0.93rem; margin-top: 0.2rem;
-    }
-    video#vid { width: 100%; max-width: 480px; border-radius: 6px; background: #111; transform: scaleX(-1); transform-origin: center; margin: 0.5rem 0; }
-    .cap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; max-width: 480px; margin: 0.5rem 0; }
-    .cap-grid button { padding: 0.4rem 0.6rem; cursor: pointer; }
-    #status { font-size: 0.9rem; color: #555; margin: 0.4rem 0; }
-    button[type=submit] { margin-top: 0.75rem; padding: 0.45rem 1.2rem; cursor: pointer; font-size: 0.95rem; }
-    .err { color: #c0392b; white-space: pre-wrap; }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
 
-  <nav>
-    <a href="/admin">Dashboard</a> &nbsp;|&nbsp;
-    <strong>Create Student</strong>
-    &emsp; {{ user.email }} &nbsp;·&nbsp; <a href="/logout">Log out</a>
-  </nav>
+{% block title %}Create Student - Attendance Portal{% endblock %}
+{% block eyebrow %}Admin{% endblock %}
+{% block heading %}Create student account{% endblock %}
+{% block description %}Capture four face angles and create the student's login in one flow.{% endblock %}
 
-  <h1>Create Student Account</h1>
-  <p>Capture <strong>upper, left, right, lower</strong> head angles — each button saves one pose. All four are required.</p>
+{% block content %}
+{% if flash %}
+<div class="alert alert-danger"><p>{{ flash }}</p></div>
+{% endif %}
 
-  {% if flash %}
-  <p class="err">{{ flash }}</p>
-  {% endif %}
-
-  <form id="f" method="post" action="/admin/students/new">
-
-    <video id="vid" autoplay playsinline muted></video>
-
-    <div class="cap-grid">
-      <button type="button" data-pose="upper">Capture upper</button>
-      <button type="button" data-pose="left">Capture left</button>
-      <button type="button" data-pose="right">Capture right</button>
-      <button type="button" data-pose="lower">Capture lower</button>
+<form id="f" class="camera-layout" method="post" action="/admin/students/new">
+  <section class="camera-card" aria-labelledby="capture-title">
+    <div class="panel-header">
+      <div>
+        <h2 id="capture-title">Face enrollment</h2>
+        <p>Capture upper, left, right, and lower head angles. All four are required.</p>
+      </div>
     </div>
 
-    <p id="status">Starting camera…</p>
+    <video id="vid" class="camera-preview" autoplay playsinline muted></video>
 
-    <hr>
+    <div class="pose-grid camera-toolbar">
+      <button class="btn btn-ghost pose-button" type="button" data-pose="upper">Capture upper</button>
+      <button class="btn btn-ghost pose-button" type="button" data-pose="left">Capture left</button>
+      <button class="btn btn-ghost pose-button" type="button" data-pose="right">Capture right</button>
+      <button class="btn btn-ghost pose-button" type="button" data-pose="lower">Capture lower</button>
+    </div>
 
-    <label>Full name
-      <input name="full_name" type="text" required />
-    </label>
-    <label>Student number
-      <input name="student_number" type="text" required />
-    </label>
-    <label>Student email (login)
-      <input name="email" type="email" required />
-    </label>
-    <label>Student password
-      <input name="password" type="password" minlength="6" required />
-    </label>
+    <p id="status" class="progress-text" role="status">Starting camera...</p>
+  </section>
+
+  <section class="panel" aria-labelledby="student-details-title">
+    <div class="panel-header">
+      <div>
+        <h2 id="student-details-title">Student details</h2>
+        <p>These values create the student profile and login account.</p>
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <label class="field">Full name
+        <input name="full_name" type="text" required />
+      </label>
+      <label class="field">Student number
+        <input name="student_number" type="text" required />
+      </label>
+      <label class="field">Student email
+        <input name="email" type="email" autocomplete="email" required />
+      </label>
+      <label class="field">Student password
+        <input name="password" type="password" autocomplete="new-password" minlength="6" required />
+        <span class="help-text">Minimum 6 characters.</span>
+      </label>
+    </div>
 
     <input type="hidden" name="img_upper" id="img_upper" />
-    <input type="hidden" name="img_left"  id="img_left"  />
+    <input type="hidden" name="img_left" id="img_left" />
     <input type="hidden" name="img_right" id="img_right" />
     <input type="hidden" name="img_lower" id="img_lower" />
 
-    <p><button type="submit" id="submitBtn" disabled>Create account</button></p>
-  </form>
+    <div class="form-actions">
+      <button class="btn" type="submit" id="submitBtn" disabled>Create account</button>
+      <a class="btn btn-ghost" href="/admin">Cancel</a>
+    </div>
+  </section>
+</form>
+{% endblock %}
 
-  <script>
-    const poses = ["upper", "left", "right", "lower"];
-    const filled = {};
-    const video = document.getElementById("vid");
-    const status = document.getElementById("status");
-    const submitBtn = document.getElementById("submitBtn");
+{% block scripts %}
+<script>
+  const poses = ["upper", "left", "right", "lower"];
+  const filled = {};
+  const video = document.getElementById("vid");
+  const status = document.getElementById("status");
+  const submitBtn = document.getElementById("submitBtn");
 
-    async function start() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-        video.srcObject = stream;
-        status.textContent = "Camera on — capture all four angles.";
-      } catch (e) {
-        status.textContent = "Camera error: " + e;
-      }
+  async function start() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      video.srcObject = stream;
+      status.textContent = "Camera on. Capture all four angles.";
+    } catch (e) {
+      status.textContent = "Camera error: " + e;
     }
-    start();
+  }
+  start();
 
-    function drawVideoMirrored(ctx, videoEl, w, h) {
-      ctx.save(); ctx.translate(w, 0); ctx.scale(-1, 1);
-      ctx.drawImage(videoEl, 0, 0, w, h); ctx.restore();
-    }
+  function drawVideoMirrored(ctx, videoEl, w, h) {
+    ctx.save(); ctx.translate(w, 0); ctx.scale(-1, 1);
+    ctx.drawImage(videoEl, 0, 0, w, h); ctx.restore();
+  }
 
-    function snap(pose) {
-      const c = document.createElement("canvas");
-      c.width = video.videoWidth || 640;
-      c.height = video.videoHeight || 480;
-      const ctx = c.getContext("2d");
-      drawVideoMirrored(ctx, video, c.width, c.height);
-      document.getElementById("img_" + pose).value = c.toDataURL("image/jpeg", 0.92);
-      filled[pose] = true;
-      status.textContent = "Saved " + pose + ". (" + Object.keys(filled).length + "/4)";
-      submitBtn.disabled = poses.some(p => !filled[p]);
-    }
+  function snap(pose, btn) {
+    const c = document.createElement("canvas");
+    c.width = video.videoWidth || 640;
+    c.height = video.videoHeight || 480;
+    const ctx = c.getContext("2d");
+    drawVideoMirrored(ctx, video, c.width, c.height);
+    document.getElementById("img_" + pose).value = c.toDataURL("image/jpeg", 0.92);
+    filled[pose] = true;
+    btn.classList.add("is-done");
+    btn.textContent = pose.charAt(0).toUpperCase() + pose.slice(1) + " saved";
+    status.textContent = Object.keys(filled).length + "/4 angles captured.";
+    submitBtn.disabled = poses.some(p => !filled[p]);
+  }
 
-    document.querySelectorAll("button[data-pose]").forEach(btn => {
-      btn.addEventListener("click", () => snap(btn.getAttribute("data-pose")));
-    });
-  </script>
-
-</body>
-</html>
+  document.querySelectorAll("button[data-pose]").forEach(btn => {
+    btn.addEventListener("click", () => snap(btn.getAttribute("data-pose"), btn));
+  });
+</script>
+{% endblock %}

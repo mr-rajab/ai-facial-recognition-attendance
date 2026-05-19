@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Attendance Portal{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  {% block body %}
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Attendance Portal home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M12 3.25 4.75 6.7v5.45c0 4.45 3.02 7.32 7.25 8.6 4.23-1.28 7.25-4.15 7.25-8.6V6.7L12 3.25Zm0 2.18 5.25 2.5v4.22c0 3.2-1.96 5.35-5.25 6.49-3.29-1.14-5.25-3.29-5.25-6.49V7.93L12 5.43Zm0 3.07a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Zm-4 8.1c.79-1.55 2.18-2.35 4-2.35s3.21.8 4 2.35c-.98.75-2.31 1.35-4 1.84-1.69-.49-3.02-1.09-4-1.84Z" />
+          </svg>
+        </span>
+        <span>
+          <strong>Attendance Portal</strong>
+          <small>Facial recognition attendance</small>
+        </span>
+      </a>
+
+      <button class="nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="site-nav">
+        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M4 7h16v2H4V7Zm0 4h16v2H4v-2Zm0 4h16v2H4v-2Z" /></svg>
+        <span class="sr-only">Toggle navigation</span>
+      </button>
+
+      {% set path = request.url.path if request is defined else "" %}
+      <nav class="nav-links" id="site-nav" data-nav-links aria-label="Primary navigation">
+        {% if user is defined and user and user.role == "admin" %}
+          <a class="nav-link {{ 'is-active' if path == '/admin' else '' }}" href="/admin">Dashboard</a>
+          <a class="nav-link {{ 'is-active' if path.startswith('/admin/classes') else '' }}" href="/admin/classes">Classes</a>
+          <a class="nav-link {{ 'is-active' if path.startswith('/admin/sessions') or path.startswith('/sessions') else '' }}" href="/admin/sessions">Sessions</a>
+          <a class="nav-link {{ 'is-active' if path.startswith('/admin/reviews') else '' }}" href="/admin/reviews">Reviews</a>
+          <a class="nav-link {{ 'is-active' if path.startswith('/admin/analytics') else '' }}" href="/admin/analytics">Analytics</a>
+        {% elif user is defined and user and user.role == "student" %}
+          <a class="nav-link {{ 'is-active' if path == '/student' else '' }}" href="/student">My Attendance</a>
+        {% elif role is defined and role == "admin" %}
+          <a class="nav-link {{ 'is-active' if path == '/admin' else '' }}" href="/admin">Dashboard</a>
+          <a class="nav-link {{ 'is-active' if path.startswith('/admin/sessions') or path.startswith('/sessions') else '' }}" href="/admin/sessions">Sessions</a>
+        {% endif %}
+      </nav>
+
+      <div class="topbar-user">
+        {% if user is defined and user %}
+          <span class="user-pill">{{ user.email }}</span>
+        {% elif role is defined %}
+          <span class="user-pill">{{ role }}</span>
+        {% endif %}
+        <a class="btn btn-ghost btn-sm" href="/logout">Log out</a>
+      </div>
+    </header>
+
+    <main class="page-shell" id="main">
+      {% block page_header %}
+      <section class="page-header">
+        <div>
+          {% set eyebrow_text %}{% block eyebrow %}{% endblock %}{% endset %}
+          {% if eyebrow_text | trim %}<p class="eyebrow">{{ eyebrow_text }}</p>{% endif %}
+          <h1>{% block heading %}{% endblock %}</h1>
+          {% set description_text %}{% block description %}{% endblock %}{% endset %}
+          {% if description_text | trim %}<p class="page-description">{{ description_text }}</p>{% endif %}
+        </div>
+        {% set actions_text %}{% block page_actions %}{% endblock %}{% endset %}
+        {% if actions_text | trim %}<div class="page-actions">{{ actions_text }}</div>{% endif %}
+      </section>
+      {% endblock %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% endblock %}
+  <script src="/static/js/app.js" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

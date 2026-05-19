@@ -1,112 +1,90 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Analytics &amp; Audit</title>
-  <style>
-    body  { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1rem 1.25rem; }
-    a     { color: #0b5fa5; }
-    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
-    nav a { margin-right: 0.2rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
-    th, td{ border: 1px solid #ccc; padding: 0.35rem 0.5rem; text-align: left; font-size: 0.9rem; }
-    th    { background: #f4f4f4; }
-    .audit td { font-family: ui-monospace, monospace; font-size: 0.82rem; vertical-align: top; }
-    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 0.75rem 0; }
-    @media (max-width: 600px) { .stats-grid { grid-template-columns: 1fr; } }
-    .stat-box { border: 1px solid #ccc; border-radius: 6px; padding: 0.75rem 1rem; }
-    .stat-box h2 { margin: 0 0 0.5rem; font-size: 0.95rem; color: #333; }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
 
-  <nav>
-    <a href="/admin">Dashboard</a> &nbsp;|&nbsp;
-    <a href="/admin/classes">Classes</a> &nbsp;|&nbsp;
-    <a href="/admin/sessions">Sessions</a> &nbsp;|&nbsp;
-    <a href="/admin/reviews">Reviews</a> &nbsp;|&nbsp;
-    <strong>Analytics</strong>
-    &emsp; {{ user.email }} &nbsp;·&nbsp; <a href="/logout">Log out</a>
-  </nav>
+{% block title %}Analytics and Audit - Attendance Portal{% endblock %}
+{% block eyebrow %}Admin{% endblock %}
+{% block heading %}Analytics and Audit Log{% endblock %}
+{% block description %}Track submission trends, replay-risk buckets, attendance statuses, and recent security events.{% endblock %}
+{% block page_actions %}
+  <a class="btn btn-ghost" href="/admin/export/audit.csv">Export audit CSV</a>
+  <a class="btn btn-ghost" href="/admin/export/records.csv">Export records CSV</a>
+{% endblock %}
 
-  <h1>Analytics &amp; Audit Log</h1>
-  <p style="color:#555;font-size:0.93rem;">
-    Submission trends, spoof-score buckets, status counts, and recent security events.
-    &nbsp;<a href="/admin/export/audit.csv">Export audit CSV</a>
-    &nbsp;·&nbsp;<a href="/admin/export/records.csv">Export records CSV</a>
-  </p>
-
-  <hr>
-
-  <!-- ── Three stat tables side by side ── -->
-  <div class="stats-grid">
-
-    <div class="stat-box">
-      <h2>Submissions by day (last 14 days)</h2>
-      <table>
+{% block content %}
+<section class="grid grid-3 align-start">
+  <div class="panel">
+    <div class="panel-header"><div><h2>Submissions by day</h2><p>Last 14 days.</p></div></div>
+    <div class="table-wrap">
+      <table class="data-table table-compact">
         <thead><tr><th>Date</th><th>Count</th></tr></thead>
         <tbody>
           {% for r in by_day %}
-          <tr><td>{{ r.d }}</td><td>{{ r.c }}</td></tr>
+          <tr><td>{{ r.d }}</td><td><span class="badge badge-blue">{{ r.c }}</span></td></tr>
           {% else %}
-          <tr><td colspan="2">No data.</td></tr>
+          <tr><td colspan="2"><div class="empty-state">No data.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+  </div>
 
-    <div class="stat-box">
-      <h2>By spoof risk</h2>
-      <table>
+  <div class="panel">
+    <div class="panel-header"><div><h2>By replay risk</h2><p>Submission risk buckets.</p></div></div>
+    <div class="table-wrap">
+      <table class="data-table table-compact">
         <thead><tr><th>Risk level</th><th>Count</th></tr></thead>
         <tbody>
           {% for r in spoof_counts %}
-          <tr><td>{{ r.spoof_risk }}</td><td>{{ r.c }}</td></tr>
+          <tr><td><span class="status-badge risk-{{ r.spoof_risk }}">{{ r.spoof_risk }}</span></td><td>{{ r.c }}</td></tr>
           {% else %}
-          <tr><td colspan="2">—</td></tr>
+          <tr><td colspan="2"><div class="empty-state">No data.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+  </div>
 
-    <div class="stat-box">
-      <h2>By attendance status</h2>
-      <table>
+  <div class="panel">
+    <div class="panel-header"><div><h2>By status</h2><p>Attendance review state.</p></div></div>
+    <div class="table-wrap">
+      <table class="data-table table-compact">
         <thead><tr><th>Status</th><th>Count</th></tr></thead>
         <tbody>
           {% for r in status_counts %}
-          <tr><td>{{ r.status }}</td><td>{{ r.c }}</td></tr>
+          <tr><td><span class="status-badge status-{{ r.status }}">{{ r.status }}</span></td><td>{{ r.c }}</td></tr>
           {% else %}
-          <tr><td colspan="2">—</td></tr>
+          <tr><td colspan="2"><div class="empty-state">No data.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-
   </div>
+</section>
 
-  <hr>
-
-  <!-- ── Audit log ── -->
-  <h2>Recent audit events <span style="font-weight:normal;font-size:0.88rem;color:#555;">(newest first, last 100)</span></h2>
-  <table class="audit">
-    <thead>
-      <tr><th>When</th><th>Event</th><th>Actor&nbsp;ID</th><th>Detail</th></tr>
-    </thead>
-    <tbody>
-      {% for r in last_audit %}
-      <tr>
-        <td>{{ r.created_at }}</td>
-        <td>{{ r.event_type }}</td>
-        <td>{{ r.actor_user_id or "—" }}</td>
-        <td>{{ r.detail or "—" }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="4">No audit events yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-</body>
-</html>
+<section class="panel mt-4">
+  <div class="panel-header">
+    <div>
+      <h2>Recent audit events</h2>
+      <p>Newest first, latest 100 events.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table audit-table">
+      <thead>
+        <tr><th>When</th><th>Event</th><th>Actor ID</th><th>Detail</th></tr>
+      </thead>
+      <tbody>
+        {% for r in last_audit %}
+        <tr>
+          <td>{{ r.created_at }}</td>
+          <td>{{ r.event_type }}</td>
+          <td>{{ r.actor_user_id or "-" }}</td>
+          <td>{{ r.detail or "-" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4"><div class="empty-state">No audit events yet.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

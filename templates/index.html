@@ -1,44 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sessions</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ccc; padding: 0.4rem 0.5rem; text-align: left; }
-    th { background: #f4f4f4; }
-    a { color: #0b5fa5; }
-    .top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
-    .badge { font-size: 0.85rem; color: #333; }
-  </style>
-</head>
-<body>
-  <div class="top">
-    <h1>Sessions</h1>
+{% extends "base.html" %}
+
+{% block title %}Sessions - Attendance Portal{% endblock %}
+{% block eyebrow %}Legacy sessions{% endblock %}
+{% block heading %}Sessions{% endblock %}
+{% block description %}Legacy live-recognition sessions from the command-line pipeline.{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
     <div>
-      <span class="badge">Signed in as: <strong>{{ role }}</strong></span>
-      &nbsp;|&nbsp; <a href="/logout">Log out</a>
+      <h2>All sessions</h2>
+      <p>Signed in as <strong>{{ role }}</strong>.</p>
     </div>
   </div>
-  <table>
-    <thead>
-      <tr><th>ID</th><th>Course</th><th>Start</th><th>End</th><th></th></tr>
-    </thead>
-    <tbody>
-      {% for s in sessions %}
-      <tr>
-        <td>{{ s.id }}</td>
-        <td>{{ s.course }}</td>
-        <td>{{ s.start_time }}</td>
-        <td>{{ s.end_time or "—" }}</td>
-        <td><a href="/sessions/{{ s.id }}">View</a></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5">No sessions yet. Run <code>run_recognition.py</code> or <code>attendance_logger.py</code>.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</body>
-</html>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>ID</th><th>Course</th><th>Start</th><th>End</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td>{{ s.id }}</td>
+          <td><strong>{{ s.course }}</strong></td>
+          <td>{{ s.start_time }}</td>
+          <td>{{ s.end_time or "-" }}</td>
+          <td><a class="btn btn-ghost btn-sm" href="/sessions/{{ s.id }}">View</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5"><div class="empty-state">No sessions yet. Run <code>run_recognition.py</code> or <code>attendance_logger.py</code>.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -24,7 +24,7 @@ def client(tmp_path, monkeypatch):
 def test_login_page_ok(client):
     r = client.get("/login")
     assert r.status_code == 200
-    assert "Attendance portal" in r.text
+    assert "Attendance Portal" in r.text
 
 
 def test_quick_attendance_page_public(client):

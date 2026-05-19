@@ -1,87 +1,85 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Classes</title>
-  <style>
-    body  { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1rem 1.25rem; }
-    a     { color: #0b5fa5; }
-    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
-    nav a { margin-right: 0.2rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
-    th, td{ border: 1px solid #ccc; padding: 0.35rem 0.6rem; text-align: left; font-size: 0.92rem; }
-    th    { background: #f4f4f4; }
-    .ok   { color: #0a7a2d; }
-    .err  { color: #c0392b; }
-    fieldset { border: 1px solid #ccc; border-radius: 6px; padding: 0.75rem 1rem; max-width: 500px; }
-    legend   { font-weight: 600; padding: 0 0.4rem; }
-    label    { display: block; margin-top: 0.5rem; font-size: 0.9rem; font-weight: 600; }
-    input[type=text], textarea { width: 100%; box-sizing: border-box; padding: 0.35rem 0.5rem; margin-top: 0.2rem; border: 1px solid #bbb; border-radius: 4px; font-size: 0.9rem; }
-    textarea { resize: vertical; height: 3.5rem; }
-    button[type=submit] { margin-top: 0.6rem; padding: 0.4rem 1rem; cursor: pointer; }
-    .btn-delete { background: none; border: none; color: #c0392b; cursor: pointer; font-size: 0.9rem; padding: 0; text-decoration: underline; }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
 
-  <nav>
-    <a href="/admin">Dashboard</a> &nbsp;|&nbsp;
-    <strong>Classes</strong> &nbsp;|&nbsp;
-    <a href="/admin/sessions">Sessions</a> &nbsp;|&nbsp;
-    <a href="/admin/reviews">Reviews</a> &nbsp;|&nbsp;
-    <a href="/admin/analytics">Analytics</a>
-    &emsp; {{ user.email }} &nbsp;·&nbsp; <a href="/logout">Log out</a>
-  </nav>
+{% block title %}Classes - Attendance Portal{% endblock %}
+{% block eyebrow %}Admin{% endblock %}
+{% block heading %}Classes{% endblock %}
+{% block description %}Create class rosters and manage enrolled students for attendance sessions.{% endblock %}
 
-  <h1>Classes</h1>
+{% block content %}
+{% if request.query_params.get('created') %}
+<div class="alert alert-success"><p>Class created.</p></div>
+{% endif %}
+{% if request.query_params.get('deleted') %}
+<div class="alert alert-success"><p>Class deleted.</p></div>
+{% endif %}
+{% if flash %}
+<div class="alert alert-danger"><p>{{ flash }}</p></div>
+{% endif %}
 
-  {% if request.query_params.get('created') %}<p class="ok">Class created.</p>{% endif %}
-  {% if request.query_params.get('deleted') %}<p class="ok">Class deleted.</p>{% endif %}
-  {% if flash %}<p class="err">{{ flash }}</p>{% endif %}
-
-  <!-- ── New class form ── -->
-  <fieldset>
-    <legend>Create new class</legend>
-    <form method="post" action="/admin/classes/new">
-      <label>Name
+<div class="grid grid-2 align-start">
+  <section class="panel" aria-labelledby="new-class-title">
+    <div class="panel-header">
+      <div>
+        <h2 id="new-class-title">Create new class</h2>
+        <p>Add a roster container before opening attendance sessions.</p>
+      </div>
+    </div>
+    <form class="form-grid" method="post" action="/admin/classes/new">
+      <label class="field">Name
         <input type="text" name="name" required placeholder="e.g. Computer Science 101" />
       </label>
-      <label>Description <span style="font-weight:normal;">(optional)</span>
-        <textarea name="description" placeholder="Short description…"></textarea>
+      <label class="field">Description <span class="help-text">(optional)</span>
+        <textarea name="description" placeholder="Short description"></textarea>
       </label>
-      <button type="submit">Create class</button>
+      <button class="btn" type="submit">Create class</button>
     </form>
-  </fieldset>
+  </section>
 
-  <hr>
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>Class setup flow</h2>
+        <p>Create a class, open its detail page, enroll students, then open sessions from Session Manager.</p>
+      </div>
+    </div>
+    <div class="form-actions">
+      <a class="btn btn-ghost" href="/admin/sessions">Open sessions</a>
+      <a class="btn btn-ghost" href="/admin">Back to dashboard</a>
+    </div>
+  </section>
+</div>
 
-  <!-- ── Class list ── -->
-  <h2>All classes</h2>
-  <table>
-    <thead>
-      <tr><th>ID</th><th>Name</th><th>Description</th><th>Students</th><th>Created</th><th></th></tr>
-    </thead>
-    <tbody>
-      {% for c in classes %}
-      <tr>
-        <td>{{ c.id }}</td>
-        <td><a href="/admin/classes/{{ c.id }}">{{ c.name }}</a></td>
-        <td>{{ c.description or "—" }}</td>
-        <td>{{ c.student_count }}</td>
-        <td>{{ c.created_at }}</td>
-        <td>
-          <form method="post" action="/admin/classes/{{ c.id }}/delete"
-                onsubmit="return confirm('Delete class {{ c.name }}? All enrollments will be removed.');">
-            <button type="submit" class="btn-delete">Delete</button>
-          </form>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6">No classes yet. Create one above.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-</body>
-</html>
+<section class="panel mt-4">
+  <div class="panel-header">
+    <div>
+      <h2>All classes</h2>
+      <p>{{ classes | length }} class{{ 'es' if classes | length != 1 else '' }} configured.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>ID</th><th>Name</th><th>Description</th><th>Students</th><th>Created</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for c in classes %}
+        <tr>
+          <td>{{ c.id }}</td>
+          <td><a href="/admin/classes/{{ c.id }}"><strong>{{ c.name }}</strong></a></td>
+          <td>{{ c.description or "-" }}</td>
+          <td><span class="badge badge-blue">{{ c.student_count }}</span></td>
+          <td>{{ c.created_at }}</td>
+          <td>
+            <form class="inline-form" method="post" action="/admin/classes/{{ c.id }}/delete" data-confirm="Delete class {{ c.name }}? All enrollments will be removed.">
+              <button type="submit" class="btn btn-soft-danger btn-sm">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6"><div class="empty-state">No classes yet. Create one above.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

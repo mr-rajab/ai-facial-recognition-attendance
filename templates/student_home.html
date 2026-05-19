@@ -1,88 +1,78 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>My Attendance</title>
-  <style>
-    body  { font-family: system-ui, sans-serif; max-width: 680px; margin: 0 auto; padding: 1rem 1.25rem; }
-    a     { color: #0b5fa5; }
-    nav   { background: #f4f4f4; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.93rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
-    th, td{ border: 1px solid #ccc; padding: 0.35rem 0.6rem; text-align: left; font-size: 0.92rem; }
-    th    { background: #f4f4f4; }
-    .ok   { color: #0a7a2d; }
+{% extends "base.html" %}
 
-    /* session cards */
-    .session-card { border: 1px solid #ccc; border-radius: 6px; padding: 0.7rem 1rem; margin-bottom: 0.6rem; }
-    .session-card.open   { border-color: #0b5fa5; background: #f0f6ff; }
-    .session-card.done   { background: #f9f9f9; color: #555; }
-    .session-card h3     { margin: 0 0 0.2rem; font-size: 1rem; }
-    .session-card p      { margin: 0 0 0.5rem; font-size: 0.88rem; color: #555; }
-    .session-card.done p { color: #888; }
-    .badge-done { font-size: 0.82rem; color: #555; border: 1px solid #ccc; border-radius: 10px; padding: 0.1rem 0.55rem; }
-    .badge-open { font-size: 0.82rem; color: #0a7a2d; border: 1px solid #a8d5b5; background: #e6f4ea; border-radius: 10px; padding: 0.1rem 0.55rem; }
-  </style>
-</head>
-<body>
+{% block title %}My Attendance - Attendance Portal{% endblock %}
+{% block eyebrow %}Student{% endblock %}
+{% block heading %}My Attendance{% endblock %}
+{% block description %}Submit attendance for open class sessions and review your recent history.{% endblock %}
 
-  <nav>
-    <strong>My Attendance</strong>
-    &emsp; {{ user.email }} &nbsp;·&nbsp; <a href="/logout">Log out</a>
-  </nav>
+{% block content %}
+{% if request.query_params.get('ok') %}
+<div class="alert alert-success"><p><strong>Submitted.</strong> Attendance recorded.</p></div>
+{% endif %}
 
-  <h1>My Attendance</h1>
-
-  {% if request.query_params.get('ok') %}
-  <p class="ok"><strong>Submitted.</strong> Attendance recorded.</p>
-  {% endif %}
-
-  <!-- ── Open sessions ── -->
-  <h2>Open sessions</h2>
-
-  {% if open_sessions %}
-    {% for sess in open_sessions %}
-    {% if sess.session_id in submitted_session_ids %}
-    <div class="session-card done">
-      <h3>{{ sess.class_name }}</h3>
-      <p>Started {{ sess.start_time }}</p>
-      <span class="badge-done">Already submitted</span>
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>Open sessions</h2>
+      <p>Sessions available for your enrolled classes.</p>
     </div>
-    {% else %}
-    <div class="session-card open">
-      <h3>{{ sess.class_name }}</h3>
-      <p>Started {{ sess.start_time }}</p>
-      <span class="badge-open">Session open</span>
-      &nbsp;
-      <a href="/student/attendance/new?session_id={{ sess.session_id }}">Submit attendance &rarr;</a>
-    </div>
-    {% endif %}
-    {% endfor %}
-  {% else %}
-    <p style="color:#555;">No open sessions for your enrolled classes right now.</p>
-  {% endif %}
+  </div>
 
-  <hr>
-
-  <!-- ── History ── -->
-  <h2>History</h2>
-  <table>
-    <thead>
-      <tr><th>When</th><th>Class</th><th>Status</th><th>Note</th></tr>
-    </thead>
-    <tbody>
-      {% for r in rows %}
-      <tr>
-        <td>{{ r.submitted_at }}</td>
-        <td>{{ r.class_name if r.class_name else "—" }}</td>
-        <td>{{ r.status }}</td>
-        <td>{% if r.status == 'rejected' and r.reject_reason %}{{ r.reject_reason }}{% else %}—{% endif %}</td>
-      </tr>
+  <div class="stack">
+    {% if open_sessions %}
+      {% for sess in open_sessions %}
+      {% if sess.session_id in submitted_session_ids %}
+      <article class="session-card done">
+        <div>
+          <h3>{{ sess.class_name }}</h3>
+          <p>Started {{ sess.start_time }}</p>
+        </div>
+        <span class="status-badge status-approved">Already submitted</span>
+      </article>
       {% else %}
-      <tr><td colspan="4">No submissions yet.</td></tr>
+      <article class="session-card open">
+        <div>
+          <h3>{{ sess.class_name }}</h3>
+          <p>Started {{ sess.start_time }}</p>
+        </div>
+        <div class="actions-cell">
+          <span class="status-badge status-open">Session open</span>
+          <a class="btn btn-sm" href="/student/attendance/new?session_id={{ sess.session_id }}">Submit attendance</a>
+        </div>
+      </article>
+      {% endif %}
       {% endfor %}
-    </tbody>
-  </table>
+    {% else %}
+      <div class="empty-state">No open sessions for your enrolled classes right now.</div>
+    {% endif %}
+  </div>
+</section>
 
-</body>
-</html>
+<section class="panel mt-4">
+  <div class="panel-header">
+    <div>
+      <h2>History</h2>
+      <p>Your latest attendance submissions.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>When</th><th>Class</th><th>Status</th><th>Note</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.submitted_at }}</td>
+          <td>{{ r.class_name if r.class_name else "-" }}</td>
+          <td><span class="status-badge status-{{ r.status }}">{{ r.status }}</span></td>
+          <td>{% if r.status == 'rejected' and r.reject_reason %}{{ r.reject_reason }}{% else %}-{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4"><div class="empty-state">No submissions yet.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

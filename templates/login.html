@@ -1,52 +1,152 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sign in — Attendance Portal</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 420px; margin: 4rem auto; padding: 0 1.25rem; }
-    a { color: #0b5fa5; }
-    label { display: block; margin: 0.65rem 0 0.2rem; font-weight: 600; }
-    input { width: 100%; padding: 0.45rem 0.5rem; font-size: 1rem; box-sizing: border-box; border: 1px solid #bbb; border-radius: 4px; }
-    button { margin-top: 1rem; padding: 0.5rem 1.4rem; font-size: 1rem; cursor: pointer; }
-    .err  { color: #c0392b; }
-    .warn { border: 1px solid #e6c200; background: #fffbe6; padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.93rem; }
-    .hint { color: #555; font-size: 0.88rem; margin-top: 1rem; }
-    pre   { font-size: 0.82rem; white-space: pre-wrap; background: #f4f4f4; padding: 0.5rem; border-radius: 4px; }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
 
-  <h1>Attendance Portal</h1>
-  <p><a href="/quick-attendance">Quick attendance (no login)</a> — camera recognises your face directly.</p>
+{% block title %}Sign in - Attendance Portal{% endblock %}
+{% block body_class %}auth-page{% endblock %}
 
-  <hr>
+{% block body %}
+<main class="auth-shell login-shell" id="main">
+  <section class="login-experience" aria-labelledby="login-title">
+    <aside class="login-visual" aria-label="Attendance Portal overview">
+      <div class="login-visual-copy">
+        <span class="login-kicker">AI attendance workspace</span>
+        <h1 id="login-title">Attendance Portal</h1>
+        <p>Face recognition, session control, review decisions, and exports in one local dashboard.</p>
+      </div>
 
-  {% if user_count == 0 or nousers %}
-  <div class="warn">
-    <strong>No users yet.</strong> Add to your <code>.env</code>:
-    <pre>BOOTSTRAP_ADMIN_EMAIL=you@university.edu
+      <div class="recognition-board" aria-hidden="true">
+        <div class="recognition-toolbar">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="recognition-camera">
+          <div class="face-frame">
+            <span class="corner corner-tl"></span>
+            <span class="corner corner-tr"></span>
+            <span class="corner corner-bl"></span>
+            <span class="corner corner-br"></span>
+            <svg viewBox="0 0 160 160" focusable="false">
+              <path d="M80 30c-24 0-42 18-42 44 0 28 18 50 42 50s42-22 42-50c0-26-18-44-42-44Z" />
+              <path d="M54 116c8-16 17-24 26-24s18 8 26 24" />
+              <path d="M58 73h.1M102 73h.1" />
+              <path d="M68 91c8 6 16 6 24 0" />
+            </svg>
+          </div>
+          <div class="scan-line"></div>
+        </div>
+        <div class="recognition-status">
+          <div>
+            <strong>Identity match</strong>
+            <span>Review-ready evidence</span>
+          </div>
+          <span class="status-dot"></span>
+        </div>
+      </div>
+
+      <div class="login-proof-grid">
+        <div><strong>01</strong><span>Capture</span></div>
+        <div><strong>02</strong><span>Verify</span></div>
+        <div><strong>03</strong><span>Review</span></div>
+        <div><strong>04</strong><span>Export</span></div>
+      </div>
+    </aside>
+
+    <section class="auth-card login-card" aria-label="Sign in">
+      <div class="login-card-head">
+        <span class="brand-mark login-brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M12 3.25 4.75 6.7v5.45c0 4.45 3.02 7.32 7.25 8.6 4.23-1.28 7.25-4.15 7.25-8.6V6.7L12 3.25Zm0 2.18 5.25 2.5v4.22c0 3.2-1.96 5.35-5.25 6.49-3.29-1.14-5.25-3.29-5.25-6.49V7.93L12 5.43Zm0 3.07a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Zm-4 8.1c.79-1.55 2.18-2.35 4-2.35s3.21.8 4 2.35c-.98.75-2.31 1.35-4 1.84-1.69-.49-3.02-1.09-4-1.84Z" />
+          </svg>
+        </span>
+        <div>
+          <p class="eyebrow">Secure portal</p>
+          <h2>Sign in</h2>
+          <p>Use your admin or student account.</p>
+        </div>
+      </div>
+
+      <a class="quick-access-card" href="/quick-attendance">
+        <span class="quick-access-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5v-9Zm4.5 3.2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm5.4-.2h3.2m-3.2 3h3.2m-6.7 3h6.7" />
+          </svg>
+        </span>
+        <span>
+          <strong>Quick attendance check</strong>
+          <small>Preview recognition without signing in</small>
+        </span>
+        <svg class="quick-access-arrow" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+      </a>
+
+    {% if user_count == 0 or nousers %}
+    <div class="alert alert-warning">
+      <p><strong>No users yet.</strong> Add bootstrap admin credentials to <code>.env</code>, restart the server, then sign in.</p>
+      <pre>BOOTSTRAP_ADMIN_EMAIL=you@university.edu
 BOOTSTRAP_ADMIN_PASSWORD=your-secure-password</pre>
-    Restart the server once, then sign in below.
-  </div>
-  {% endif %}
+    </div>
+    {% endif %}
 
-  {% if error %}
-  <p class="err"><strong>Wrong email or password.</strong> Try again.</p>
-  {% endif %}
+    {% if request.query_params.get('registered') %}
+    <div class="alert alert-success"><p>Account created. Sign in with your student email and password.</p></div>
+    {% endif %}
 
-  <form method="post" action="/login">
-    <label for="email">Email</label>
-    <input id="email" name="email" type="email" autocomplete="username"
-           required {% if user_count == 0 %}disabled{% endif %} />
-    <label for="password">Password</label>
-    <input id="password" name="password" type="password" autocomplete="current-password"
-           required {% if user_count == 0 %}disabled{% endif %} />
-    <button type="submit" {% if user_count == 0 %}disabled{% endif %}>Sign in</button>
-  </form>
+    {% if error %}
+    <div class="alert alert-danger"><p><strong>Wrong email or password.</strong> Try again.</p></div>
+    {% endif %}
 
-  <p class="hint">Admins manage students and sessions. Students submit one attendance photo per class session.</p>
+    <form class="form-grid login-form" method="post" action="/login">
+      <label class="field login-field" for="email">
+        <span>Email</span>
+        <span class="input-shell">
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Zm2 .8 6 4.2 6-4.2" />
+          </svg>
+          <input id="email" name="email" type="email" autocomplete="username" placeholder="you@university.edu" required {% if user_count == 0 %}disabled{% endif %} />
+        </span>
+      </label>
+      <label class="field login-field" for="password">
+        <span>Password</span>
+        <span class="input-shell">
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <path d="M7 11V8a5 5 0 0 1 10 0v3m-9.5 0h9A2.5 2.5 0 0 1 19 13.5v4A2.5 2.5 0 0 1 16.5 20h-9A2.5 2.5 0 0 1 5 17.5v-4A2.5 2.5 0 0 1 7.5 11Z" />
+          </svg>
+          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Password" required {% if user_count == 0 %}disabled{% endif %} />
+          <button class="password-toggle" type="button" data-password-toggle aria-label="Show password" {% if user_count == 0 %}disabled{% endif %}>
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z" />
+              <path d="M12 9.2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6Z" />
+            </svg>
+          </button>
+        </span>
+      </label>
+      <button class="btn login-submit" type="submit" {% if user_count == 0 %}disabled{% endif %}>
+        <span>Sign in</span>
+        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M5 12h13m-5-5 5 5-5 5" /></svg>
+      </button>
+    </form>
 
-</body>
-</html>
+      <div class="login-foot">
+        <span>Student enrollment</span>
+        <a href="/register-student">Create account</a>
+      </div>
+    </section>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const toggle = document.querySelector("[data-password-toggle]");
+  const password = document.getElementById("password");
+  if (toggle && password) {
+    toggle.addEventListener("click", () => {
+      const hidden = password.type === "password";
+      password.type = hidden ? "text" : "password";
+      toggle.setAttribute("aria-label", hidden ? "Hide password" : "Show password");
+      toggle.classList.toggle("is-active", hidden);
+    });
+  }
+</script>
+{% endblock %}
