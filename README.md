@@ -1,5 +1,29 @@
 # AI-Based Facial Recognition Attendance System
 
+> **Graduation Project** · **Biruni University** — Department of **Computer Engineering**
+>
+> | Student | ID |
+> | --- | --- |
+> | **Ahmad Rajab** | 230408916 |
+> | **Abdallatif Al Afandi** | 220408911 |
+>
+> 🌐 **Live system:** https://attendance.cloud
+
+A production-deployed web system that marks class attendance by **face recognition** in a couple of
+seconds, while **blocking cheating** with a trained anti-spoofing (liveness) model that rejects
+printed photos and phone/laptop screen replays. It includes an admin portal (classes, sessions,
+review queue, analytics, audit, exports), a student portal, a face-recognition AI pipeline
+(InsightFace / ArcFace embeddings matched by cosine similarity), support tickets, admin
+announcements, and a light/dark responsive UI — all running privately on our own server with no
+paid cloud and no GPU.
+
+**📘 Full documentation for the jury:** [`docs/GRADUATION_REPORT.md`](docs/GRADUATION_REPORT.md)
+(A→Z report + technology comparisons) · [`docs/JURY_QA.md`](docs/JURY_QA.md) (20 Q&A) ·
+[`docs/PRESENTATION_PROMPTS.md`](docs/PRESENTATION_PROMPTS.md) · screenshots in
+[`docs/screenshots/`](docs/screenshots/).
+
+---
+
 This folder (`the_project/`) contains the **full 5-week stack** plus subsequent security and portal hardening work:
 
 | Week | Focus |
