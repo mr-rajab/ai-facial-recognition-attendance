@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}{{ thread.subject }} - Support{% endblock %}
+{% block eyebrow %}{{ 'Admin' if is_admin else 'Student' }} · Support{% endblock %}
+{% block heading %}{{ thread.subject }}{% endblock %}
+{% block page_actions %}
+  <a class="btn btn-ghost" href="{{ '/admin/support' if is_admin else '/student/support' }}">Back to inbox</a>
+  {% if is_admin %}
+  <form class="inline-form" method="post" action="/admin/support/{{ thread.id }}/status">
+    <input type="hidden" name="action" value="{{ 'open' if thread.status == 'closed' else 'close' }}" />
+    <button class="btn {{ 'btn-ghost' if thread.status == 'closed' else 'btn-soft-danger' }}" type="submit">
+      {{ 'Reopen thread' if thread.status == 'closed' else 'Close thread' }}
+    </button>
+  </form>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="chat-subhead">
+  <span class="status-badge status-{{ thread.status }}">{{ thread.status }}</span>
+  <span class="badge">{{ topic_labels.get(thread.topic, thread.topic) }}</span>
+  {% if is_admin and thread.student_name %}<span class="meta">{{ thread.student_name }} · {{ thread.student_number }}</span>{% endif %}
+</div>
+
+<div class="chat-shell panel" data-chat data-endpoint="/support/{{ thread.id }}/messages.json" data-last="{{ messages[-1].id if messages else 0 }}">
+  <div class="chat-log" data-chat-log>
+    {% for m in messages %}
+      {% set mine = m.sender_user_id == me %}
+      <div class="chat-msg {{ 'is-mine' if mine }} {{ 'is-admin' if m.sender_role == 'admin' }}">
+        <div class="chat-meta">
+          <span class="chat-who">{{ 'You' if mine else m.sender_name }}</span>
+          {% if m.sender_role == 'admin' %}<span class="chat-tag">Admin</span>{% endif %}
+          <span class="chat-time">{{ m.created_at[11:16] }}</span>
+        </div>
+        <div class="chat-bubble">{{ m.body }}</div>
+      </div>
+    {% endfor %}
+  </div>
+  {% if thread.status == 'closed' and not is_admin %}
+  <p class="chat-closed">This conversation is closed — sending a reply reopens it.</p>
+  {% endif %}
+  <form class="chat-composer" data-chat-form action="{{ '/admin' if is_admin else '/student' }}/support/{{ thread.id }}/reply" method="post">
+    <textarea name="body" rows="1" placeholder="Type your reply…" maxlength="2000" required></textarea>
+    <button class="btn" type="submit">Send</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/chat.js?v=20260618" defer></script>
+{% endblock %}

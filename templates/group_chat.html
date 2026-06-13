@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Announcements - Attendance Portal{% endblock %}
+{% block eyebrow %}{{ 'Admin' if role == 'admin' else 'Student' }}{% endblock %}
+{% block heading %}Announcements{% endblock %}
+{% block description %}{% if role == 'admin' %}Share news and updates with all students.{% else %}News and updates from your administrators.{% endif %}{% endblock %}
+{% block page_actions %}
+  {% if role == 'admin' %}<a class="btn btn-ghost" href="/admin/support">Support inbox</a>{% else %}<a class="btn btn-ghost" href="/student/support">My support</a>{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="chat-shell announce panel" data-chat data-endpoint="/chat/messages.json" data-last="{{ messages[-1].id if messages else 0 }}"{% if role == 'admin' %} data-delete-url="/chat/__ID__/delete"{% endif %}>
+  <div class="chat-log" data-chat-log>
+    {% for m in messages %}
+      <div class="chat-msg is-admin" data-id="{{ m.id }}">
+        <div class="chat-meta">
+          <span class="chat-who">{{ m.sender_name }}</span>
+          <span class="chat-tag">Admin</span>
+          <span class="chat-time">{{ m.created_at[11:16] }} · {{ m.created_at[:10] }}</span>
+        </div>
+        <div class="chat-bubble">{{ m.body }}</div>
+      </div>
+    {% else %}
+      <div class="chat-empty">No announcements yet.</div>
+    {% endfor %}
+  </div>
+  {% if role == 'admin' %}
+  <form class="chat-composer" data-chat-form action="/chat/send" method="post">
+    <textarea name="body" rows="1" placeholder="Write an announcement for all students…" maxlength="2000" required></textarea>
+    <button class="btn" type="submit">Post</button>
+  </form>
+  {% else %}
+  <p class="chat-readonly">📢 Only administrators can post announcements.</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/chat.js?v=20260618" defer></script>
+{% endblock %}

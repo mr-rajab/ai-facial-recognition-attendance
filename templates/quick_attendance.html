@@ -12,12 +12,12 @@
       </span>
       <div>
         <h1 id="quick-title">Quick attendance</h1>
-        <p>Check who the model recognizes before submitting official attendance.</p>
+        <p>Show your face to mark attendance for an open class — or just test recognition.</p>
       </div>
     </div>
 
     <div class="alert alert-info">
-      <p>This page does not record attendance or log you in. Students should sign in to submit official class attendance.</p>
+      <p><strong>Take attendance:</strong> records you as present in your open class session (shows in your dashboard and for the admin). <strong>Test:</strong> only checks recognition — nothing is recorded. A live, close-up face is required; photos and screens are rejected.</p>
     </div>
 
     <div class="camera-card">
@@ -25,7 +25,8 @@
       <canvas id="cv" hidden></canvas>
       <div class="camera-toolbar">
         <button class="btn btn-secondary" type="button" id="start">Start camera</button>
-        <button class="btn" type="button" id="snap" disabled>Capture and recognize</button>
+        <button class="btn" type="button" id="record" disabled>Take attendance</button>
+        <button class="btn btn-ghost" type="button" id="snap" disabled>Test (no record)</button>
         <a class="btn btn-ghost" href="/login">Back to sign in</a>
       </div>
       <div id="out" class="capture-output" role="status" aria-live="polite"></div>
@@ -41,6 +42,7 @@
   const ctx = cv.getContext('2d');
   const startBtn = document.getElementById('start');
   const snapBtn = document.getElementById('snap');
+  const recordBtn = document.getElementById('record');
   const out = document.getElementById('out');
 
   function drawVideoMirrored(context, videoEl, w, h) {
@@ -56,6 +58,16 @@
     out.textContent = text;
   }
 
+  async function capture() {
+    const w = vid.videoWidth, h = vid.videoHeight;
+    if (!w || !h) { show('Camera not ready. Click Start camera first.', false); return null; }
+    cv.width = w; cv.height = h;
+    drawVideoMirrored(ctx, vid, w, h);
+    const blob = await new Promise((resolve) => cv.toBlob(resolve, 'image/jpeg', 0.88));
+    if (!blob) { show('Could not build image.', false); return null; }
+    return blob;
+  }
+
   startBtn.addEventListener('click', async () => {
     out.className = 'capture-output';
     try {
@@ -63,6 +75,7 @@
       vid.srcObject = stream;
       await vid.play();
       snapBtn.disabled = false;
+      recordBtn.disabled = false;
       startBtn.textContent = 'Camera ready';
       startBtn.disabled = true;
     } catch (e) {
@@ -70,21 +83,11 @@
     }
   });
 
+  // Test recognition only — records nothing.
   snapBtn.addEventListener('click', async () => {
     out.className = 'capture-output';
-    const w = vid.videoWidth, h = vid.videoHeight;
-    if (!w || !h) {
-      show('Camera not ready. Click Start camera first.', false);
-      return;
-    }
-    cv.width = w;
-    cv.height = h;
-    drawVideoMirrored(ctx, vid, w, h);
-    const blob = await new Promise((resolve) => cv.toBlob(resolve, 'image/jpeg', 0.88));
-    if (!blob) {
-      show('Could not build image.', false);
-      return;
-    }
+    const blob = await capture();
+    if (!blob) return;
     snapBtn.disabled = true;
     const fd = new FormData();
     fd.append('photo', blob, 'capture.jpg');
@@ -93,23 +96,38 @@
       const j = await r.json();
       if (j.ok) {
         let msg = j.greeting || ('Hello, ' + (j.name || j.student_id));
-        if (j.spoof_warning) {
-          msg += '\n\n' + j.spoof_warning;
-        } else if (j.presentation && (j.presentation.risk === 'medium' || j.presentation.risk === 'high')) {
-          msg += '\n\nReplay check: ' + j.presentation.risk + ' risk (score ' + j.presentation.score + '). Same signal is stored for admins on real attendance.';
-        }
+        if (j.spoof_warning) { msg += '\n\n' + j.spoof_warning; }
         show(msg, true);
       } else {
-        let err = j.message || 'Recognition failed.';
-        if (j.presentation && (j.presentation.risk === 'medium' || j.presentation.risk === 'high')) {
-          err += ' - Replay check: ' + j.presentation.risk + ' risk.';
-        }
-        show(err, false);
+        show(j.message || 'Recognition failed.', false);
       }
     } catch (e) {
       show('Network error: ' + (e.message || String(e)), false);
     } finally {
       snapBtn.disabled = false;
+    }
+  });
+
+  // Take attendance — records official attendance for an open enrolled session.
+  recordBtn.addEventListener('click', async () => {
+    out.className = 'capture-output';
+    const blob = await capture();
+    if (!blob) return;
+    recordBtn.disabled = true;
+    const oldLabel = recordBtn.textContent;
+    recordBtn.textContent = 'Recording…';
+    const fd = new FormData();
+    fd.append('photo', blob, 'capture.jpg');
+    try {
+      const r = await fetch('/api/quick-attendance/record', { method: 'POST', body: fd });
+      const j = await r.json();
+      const good = j.ok && (j.recorded || j.already);
+      show(j.message || (good ? 'Attendance recorded.' : 'Could not record attendance.'), good);
+    } catch (e) {
+      show('Network error: ' + (e.message || String(e)), false);
+    } finally {
+      recordBtn.disabled = false;
+      recordBtn.textContent = oldLabel;
     }
   });
 </script>

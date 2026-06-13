@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Support - Attendance Portal{% endblock %}
+{% block eyebrow %}Student{% endblock %}
+{% block heading %}Support{% endblock %}
+{% block description %}Ask the admin for help with attendance, your class schedule, or anything else.{% endblock %}
+{% block page_actions %}<a class="btn btn-ghost" href="/chat">Announcements</a>{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <div><h2>New request</h2><p>Pick a topic and describe your issue — the admin will reply here.</p></div>
+  </div>
+  <form class="form-grid" method="post" action="/student/support/new">
+    <div class="form-grid form-grid-2">
+      <label class="field">Topic
+        <select name="topic">
+          {% for key, label in topics %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field">Subject
+        <input name="subject" type="text" maxlength="160" placeholder="Short summary" required />
+      </label>
+    </div>
+    <label class="field">Message
+      <textarea name="body" rows="3" maxlength="2000" placeholder="Describe your issue…" required></textarea>
+    </label>
+    <div class="form-actions"><button class="btn" type="submit">Send request</button></div>
+  </form>
+</section>
+
+<section class="panel mt-4">
+  <div class="panel-header">
+    <div><h2>Your conversations</h2><p>Open a thread to read replies and continue chatting.</p></div>
+  </div>
+  <div class="thread-list">
+    {% for t in threads %}
+    <a class="thread-item {{ 'has-unread' if t.student_unread }}" href="/student/support/{{ t.id }}">
+      <div class="thread-main">
+        <strong>{{ t.subject }}</strong>
+        <span class="thread-snippet">{{ (t.last_body or '')[:90] }}</span>
+      </div>
+      <div class="thread-side">
+        <span class="badge">{{ topic_labels.get(t.topic, t.topic) }}</span>
+        <span class="status-badge status-{{ t.status }}">{{ t.status }}</span>
+        {% if t.student_unread %}<span class="unread-pill">{{ t.student_unread }}</span>{% endif %}
+      </div>
+    </a>
+    {% else %}
+    <div class="empty-state">No conversations yet — start one above.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

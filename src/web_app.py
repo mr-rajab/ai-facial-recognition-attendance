@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,11 +12,47 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.sessions import SessionMiddleware
 
 from portal_bootstrap import ensure_bootstrap_admin
 from portal_router import build_router
 from rate_limit import limiter
+
+# Persistent "remember me" duration for the signed session cookie.
+SESSION_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
+_MAXAGE_RE = re.compile(r"Max-Age=\d+;\s*", re.IGNORECASE)
+
+
+class RememberMeMiddleware:
+    """Turns the session cookie into a browser-session cookie (no Max-Age,
+    cleared when the browser closes) when the user did NOT tick "keep me signed
+    in". Installed OUTSIDE SessionMiddleware so it post-processes its Set-Cookie.
+    Persistent (Max-Age) stays the default for every other flow."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                session = scope.get("session")
+                if session is not None and session.get("_remember") is False:
+                    headers = MutableHeaders(scope=message)
+                    cookies = headers.getlist("set-cookie")
+                    if cookies:
+                        del headers["set-cookie"]
+                        for cookie in cookies:
+                            if cookie.startswith("session="):
+                                cookie = _MAXAGE_RE.sub("", cookie)
+                            headers.append("set-cookie", cookie)
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _ENV_PRIMARY = os.path.join(ROOT, ".env")
@@ -87,7 +124,11 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SECRET_KEY", "change-me-set-SECRET_KEY-in-production"),
     https_only=False,
+    max_age=SESSION_MAX_AGE,
 )
+# Added after SessionMiddleware → wraps it on the outside, so it can post-process
+# the session Set-Cookie header for the "keep me signed in" behaviour.
+app.add_middleware(RememberMeMiddleware)
 app.mount("/static", StaticFiles(directory=os.path.join(ROOT, "static")), name="static")
 
 app.include_router(build_router(templates, ROOT))

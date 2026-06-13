@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import pager with context %}
+
+{% block title %}Support Inbox - Attendance Portal{% endblock %}
+{% block eyebrow %}Admin{% endblock %}
+{% block heading %}Support inbox{% endblock %}
+{% block description %}Student questions about attendance, class schedules, and more.{% endblock %}
+{% block page_actions %}<a class="btn btn-ghost" href="/chat">Announcements</a>{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <div><h2>Conversations</h2><p><strong>{{ open_count }}</strong> open thread{{ 's' if open_count != 1 else '' }}.</p></div>
+    <span class="badge badge-amber">{{ open_count }} open</span>
+  </div>
+
+  <form class="filter-bar" method="get" action="/admin/support" role="search">
+    <label class="field filter-grow">
+      <span>Search</span>
+      <input type="search" name="q" value="{{ q }}" placeholder="Subject, student name or number" autocomplete="off" />
+    </label>
+    <label class="field filter-sm">
+      <span>Status</span>
+      <select name="status">
+        <option value="open"   {{ 'selected' if status == 'open' }}>Open</option>
+        <option value="closed" {{ 'selected' if status == 'closed' }}>Closed</option>
+        <option value="all"    {{ 'selected' if status == 'all' }}>All</option>
+      </select>
+    </label>
+    <label class="field filter-sm">
+      <span>Topic</span>
+      <select name="topic">
+        <option value="">Any</option>
+        {% for key, label in topics %}<option value="{{ key }}" {{ 'selected' if topic == key }}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <input type="hidden" name="per_page" value="{{ pg.per_page }}" />
+    <div class="filter-actions">
+      <button class="btn btn-sm" type="submit">Apply</button>
+      <a class="btn btn-ghost btn-sm" href="/admin/support">Reset</a>
+    </div>
+  </form>
+
+  <div class="thread-list">
+    {% for t in threads %}
+    <a class="thread-item {{ 'has-unread' if t.admin_unread }}" href="/admin/support/{{ t.id }}">
+      <div class="thread-main">
+        <strong>{{ t.subject }}</strong>
+        <span class="thread-snippet">{{ t.student_name or 'Unknown student' }}{% if t.student_number %} · {{ t.student_number }}{% endif %}</span>
+      </div>
+      <div class="thread-side">
+        <span class="badge">{{ topic_labels.get(t.topic, t.topic) }}</span>
+        <span class="status-badge status-{{ t.status }}">{{ t.status }}</span>
+        {% if t.admin_unread %}<span class="unread-pill">{{ t.admin_unread }}</span>{% endif %}
+        <span class="thread-time meta">{{ t.last_message_at[5:16].replace('T', ' ') }}</span>
+      </div>
+    </a>
+    {% else %}
+    <div class="empty-state">No conversations match these filters.</div>
+    {% endfor %}
+  </div>
+  {{ pager(pg) }}
+</section>
+{% endblock %}

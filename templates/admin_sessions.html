@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import pager with context %}
 
 {% block title %}Sessions - Attendance Portal{% endblock %}
 {% block eyebrow %}Admin{% endblock %}
@@ -83,6 +84,32 @@
       <p>Latest completed sessions and exports.</p>
     </div>
   </div>
+
+  <form class="filter-bar" method="get" action="/admin/sessions">
+    <label class="field filter-grow">
+      <span>Class</span>
+      <select name="class_id">
+        <option value="">All classes</option>
+        {% for c in classes %}
+        <option value="{{ c.id }}" {{ 'selected' if f_class == c.id|string }}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field filter-sm">
+      <span>From</span>
+      <input type="date" name="from" value="{{ date_from }}" />
+    </label>
+    <label class="field filter-sm">
+      <span>To</span>
+      <input type="date" name="to" value="{{ date_to }}" />
+    </label>
+    <input type="hidden" name="per_page" value="{{ pg.per_page }}" />
+    <div class="filter-actions">
+      <button class="btn btn-sm" type="submit">Apply</button>
+      <a class="btn btn-ghost btn-sm" href="/admin/sessions">Reset</a>
+    </div>
+  </form>
+
   <div class="table-wrap">
     <table class="data-table">
       <thead>
@@ -104,10 +131,11 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="6"><div class="empty-state">No closed sessions yet.</div></td></tr>
+        <tr><td colspan="6"><div class="empty-state">{% if f_class or date_from or date_to %}No closed sessions match these filters. <a href="/admin/sessions">Reset</a>.{% else %}No closed sessions yet.{% endif %}</div></td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  {{ pager(pg) }}
 </section>
 {% endblock %}

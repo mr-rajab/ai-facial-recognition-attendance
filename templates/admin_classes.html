@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import pager with context %}
 
 {% block title %}Classes - Attendance Portal{% endblock %}
 {% block eyebrow %}Admin{% endblock %}
@@ -53,7 +54,7 @@
   <div class="panel-header">
     <div>
       <h2>All classes</h2>
-      <p>{{ classes | length }} class{{ 'es' if classes | length != 1 else '' }} configured.</p>
+      <p>{{ pg.total }} class{{ 'es' if pg.total != 1 else '' }} configured.</p>
     </div>
   </div>
   <div class="table-wrap">
@@ -81,5 +82,6 @@
       </tbody>
     </table>
   </div>
+  {{ pager(pg) }}
 </section>
 {% endblock %}

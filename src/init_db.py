@@ -136,6 +136,51 @@ def _migrate_portal_schema(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    # ── Messaging: student↔admin support threads + public group chat ──────
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS support_threads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_row_id INTEGER REFERENCES students(id),
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            topic TEXT NOT NULL DEFAULT 'support',
+            subject TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TEXT NOT NULL,
+            last_message_at TEXT NOT NULL,
+            admin_unread INTEGER NOT NULL DEFAULT 0,
+            student_unread INTEGER NOT NULL DEFAULT 0
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS support_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            thread_id INTEGER NOT NULL REFERENCES support_threads(id),
+            sender_user_id INTEGER NOT NULL REFERENCES users(id),
+            sender_role TEXT NOT NULL,
+            sender_name TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS group_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_user_id INTEGER NOT NULL REFERENCES users(id),
+            sender_role TEXT NOT NULL,
+            sender_name TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_support_msg_thread ON support_messages(thread_id, id);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_support_thread_user ON support_threads(user_id, last_message_at);")
+
     sess_cols = {r[1] for r in conn.execute("PRAGMA table_info(sessions);").fetchall()}
     if "class_id" not in sess_cols:
         conn.execute("ALTER TABLE sessions ADD COLUMN class_id INTEGER REFERENCES classes(id);")
@@ -157,6 +202,15 @@ def _migrate_portal_schema(conn: sqlite3.Connection) -> None:
     )
     if "session_id" not in cols:
         conn.execute("ALTER TABLE daily_attendance ADD COLUMN session_id INTEGER REFERENCES sessions(id);")
+    # Trained-liveness + mask/glasses results
+    if "liveness_label" not in cols:
+        conn.execute("ALTER TABLE daily_attendance ADD COLUMN liveness_label TEXT;")
+    if "liveness_score" not in cols:
+        conn.execute("ALTER TABLE daily_attendance ADD COLUMN liveness_score REAL;")
+    if "mask_flag" not in cols:
+        conn.execute("ALTER TABLE daily_attendance ADD COLUMN mask_flag INTEGER DEFAULT 0;")
+    if "glasses_flag" not in cols:
+        conn.execute("ALTER TABLE daily_attendance ADD COLUMN glasses_flag INTEGER DEFAULT 0;")
 
 
 if __name__ == "__main__":

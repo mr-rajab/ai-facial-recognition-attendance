@@ -103,7 +103,30 @@ def quick_match_from_jpeg(root: str, jpeg_bytes: bytes) -> Dict[str, Any]:
         "greeting": greeting,
         "presentation": presentation,
     }
-    if presentation.get("risk") in ("medium", "high"):
+    # Trained passive-liveness gate — catches phone/print replays the heuristics miss.
+    try:
+        import face_checks
+
+        live = face_checks.assess_liveness(root, bgr, face.bbox_xyxy)
+    except Exception:
+        live = {"available": False, "is_real": True, "risk": "none", "label": "unknown"}
+    out["liveness"] = live
+    if live.get("available") and not live.get("is_real", True):
+        out["ok"] = False
+        if live.get("too_small"):
+            out["reason"] = "face_too_small"
+            out["message"] = (
+                "Move closer — your face is too small to verify. Hold the camera closer so your "
+                "face fills the frame, then capture again."
+            )
+        else:
+            out["reason"] = "spoof"
+            out["spoof"] = True
+            out["message"] = (
+                f"Liveness check failed ({live.get('label', 'spoof')}). This looks like a photo or a "
+                "screen, not a live face — use the real person in front of the camera."
+            )
+    elif presentation.get("risk") in ("medium", "high"):
         out["spoof_warning"] = (
             "Heuristic check: this frame resembles a screen or print more than a typical live selfie. "
             "Admins see the same flags on official attendance uploads."

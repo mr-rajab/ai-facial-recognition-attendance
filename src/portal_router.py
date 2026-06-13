@@ -5,11 +5,20 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import logging
 import os
 import re
 import sqlite3
 from datetime import datetime
 from typing import Any, List, Optional
+
+_log = logging.getLogger("uvicorn.error")
+
+
+def _log_exc(message: str) -> None:
+    """Log an unexpected exception (with traceback) to the server log, so users
+    only ever see a friendly message while admins can still debug."""
+    _log.exception(message)
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
@@ -20,6 +29,7 @@ import shutil
 import init_db as _idb
 
 from anti_spoof import assess_jpeg_bytes
+import face_checks
 from attendance_identity import verify_selfie_matches_enrolled_student
 from attendance_db import close_session, ensure_db
 from audit_log import write_audit
@@ -56,6 +66,54 @@ def _user_count() -> int:
     return n
 
 
+_PER_PAGE_OPTIONS = (10, 20, 30, 40)
+_DEFAULT_PER_PAGE = 20
+
+# Support-ticket topics (key, label) — drives the student's "new request" picker.
+SUPPORT_TOPICS = [
+    ("support", "General support"),
+    ("attendance", "Attendance issue"),
+    ("schedule", "Class schedule"),
+    ("other", "Other"),
+]
+SUPPORT_TOPIC_KEYS = {k for k, _ in SUPPORT_TOPICS}
+
+
+def _paginate(request: Request, total: int, default: int = _DEFAULT_PER_PAGE) -> dict:
+    """Resolve page/per_page query params into a pagination context.
+
+    Returns the slice bounds (offset/per_page) plus everything a template needs
+    to render the pager: current page, total pages, visible range, and the
+    allowed page-size options (10/20/30/40).
+    """
+    try:
+        per_page = int(request.query_params.get("per_page", default))
+    except (TypeError, ValueError):
+        per_page = default
+    if per_page not in _PER_PAGE_OPTIONS:
+        per_page = default
+    try:
+        page = int(request.query_params.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    total = max(0, int(total))
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * per_page
+    return {
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "total_pages": total_pages,
+        "offset": offset,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "start": 0 if total == 0 else offset + 1,
+        "end": min(offset + per_page, total),
+        "options": list(_PER_PAGE_OPTIONS),
+    }
+
+
 def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
     r = APIRouter()
 
@@ -80,6 +138,135 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
                 content={"ok": False, "reason": "error", "message": str(ex)[:200]},
             )
         return JSONResponse(content=out)
+
+    @r.post("/api/quick-attendance/record")
+    @limiter.limit("20/minute")
+    async def api_quick_attendance_record(request: Request, photo: UploadFile = File(...)) -> JSONResponse:
+        """Kiosk attendance: recognise the live face, then record official attendance
+        for an open session of a class the student is enrolled in. The row lands in
+        the same daily_attendance table, so it shows for the admin and the student."""
+        data = await photo.read()
+        if len(data) < 1000:
+            return JSONResponse(status_code=400, content={"ok": False, "reason": "small",
+                                "message": "Image too small. Capture again."})
+        # Recognition + liveness/anti-spoof gate (rejects screens, prints, tiny faces).
+        try:
+            match = quick_match_from_jpeg(root, data)
+        except Exception as ex:
+            return JSONResponse(status_code=500, content={"ok": False, "reason": "error",
+                                "message": str(ex)[:200]})
+        if not match.get("ok"):
+            return JSONResponse(content=match)  # carries no-match / spoof / move-closer message
+
+        student_number = str(match.get("student_id", ""))
+        sim = float(match.get("confidence", 0.0))
+        live = match.get("liveness", {}) or {}
+
+        conn = _conn()
+        srow = conn.execute(
+            "SELECT id, name FROM students WHERE student_id = ?;", (student_number,)
+        ).fetchone()
+        if not srow:
+            conn.close()
+            return JSONResponse(content={"ok": False, "reason": "not_student",
+                                "message": "Recognised face is not a registered student."})
+        student_row_id = int(srow["id"])
+        urow = conn.execute(
+            "SELECT id FROM users WHERE student_row_id = ? AND role = 'student' ORDER BY id LIMIT 1;",
+            (student_row_id,),
+        ).fetchone()
+        if not urow:
+            conn.close()
+            return JSONResponse(content={"ok": False, "reason": "no_account",
+                                "message": "No student account is linked to this face."})
+        user_id = int(urow["id"])
+
+        sess = conn.execute(
+            """
+            SELECT s.id, COALESCE(c.name, s.course) AS class_name
+            FROM sessions s
+            JOIN classes c ON c.id = s.class_id
+            JOIN class_enrollments e ON e.class_id = c.id
+            WHERE e.student_row_id = ? AND s.end_time IS NULL
+            ORDER BY s.start_time DESC
+            LIMIT 1;
+            """,
+            (student_row_id,),
+        ).fetchone()
+        if not sess:
+            conn.close()
+            return JSONResponse(content={"ok": False, "reason": "no_session",
+                                "message": f"Hi {srow['name']} — no open class session to record "
+                                           "attendance for right now."})
+        session_id = int(sess["id"])
+        class_name = sess["class_name"]
+
+        dup = conn.execute(
+            "SELECT id FROM daily_attendance WHERE user_id = ? AND session_id = ? LIMIT 1;",
+            (user_id, session_id),
+        ).fetchone()
+        if dup:
+            conn.close()
+            return JSONResponse(content={"ok": True, "already": True, "name": srow["name"],
+                                "class": class_name,
+                                "message": f"{srow['name']}, your attendance for {class_name} "
+                                           "is already recorded."})
+
+        # Mask / glasses flags for the stored record.
+        checks = face_checks.assess_selfie_bytes(root, data)
+        mask = checks.get("mask", {}) if checks.get("face") else {}
+        glasses = checks.get("glasses", {}) if checks.get("face") else {}
+        mask_flag = 1 if mask.get("flag") else 0
+        glasses_flag = 1 if glasses.get("flag") else 0
+
+        liveness_label = live.get("label", "unknown")
+        liveness_score = live.get("real_score")
+        block_glasses = os.environ.get("FLAG_GLASSES_BLOCK", "1").lower() not in ("0", "false", "no")
+        auto_ok = (
+            bool(live.get("is_real")) and sim >= 0.50
+            and not mask_flag and not (block_glasses and glasses_flag)
+        )
+        status = "approved" if auto_ok else "pending"
+        detail_bits = [f"liveness={liveness_label}"
+                       + (f"({liveness_score})" if liveness_score is not None else ""), "via=kiosk"]
+        if mask_flag:
+            detail_bits.append("mask")
+        if glasses_flag:
+            detail_bits.append("glasses")
+        detail = " | ".join(detail_bits)[:500]
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        abs_dir = os.path.join(root, "data", "portal", "daily", str(user_id))
+        os.makedirs(abs_dir, exist_ok=True)
+        abs_path = os.path.join(abs_dir, f"{ts}.jpg")
+        with open(abs_path, "wb") as f:
+            f.write(data)
+        submitted = datetime.now().isoformat(timespec="seconds")
+        sha = hashlib.sha256(data).hexdigest()
+        conn.execute(
+            """
+            INSERT INTO daily_attendance (
+                user_id, student_row_id, photo_path, submitted_at, status,
+                spoof_risk, spoof_score, spoof_detail,
+                identity_similarity, photo_sha256, session_id,
+                liveness_label, liveness_score, mask_flag, glasses_flag
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (user_id, student_row_id, abs_path, submitted, status,
+             live.get("risk", "none"), live.get("spoof_score"), detail,
+             sim, sha, session_id, liveness_label, liveness_score, mask_flag, glasses_flag),
+        )
+        write_audit(request, "kiosk_attendance", actor_user_id=user_id,
+                    detail=f"session={session_id}; status={status}; sim={sim:.3f}",
+                    target_type="daily_attendance", conn=conn)
+        conn.commit()
+        conn.close()
+        msg = f"Attendance recorded for {srow['name']} — {class_name}."
+        if status == "pending":
+            msg += " Flagged for admin review."
+        return JSONResponse(content={"ok": True, "recorded": True, "name": srow["name"],
+                            "class": class_name, "status": status, "message": msg})
 
     @r.get("/")
     def root_redirect(request: Request) -> RedirectResponse:
@@ -132,6 +319,7 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
         request: Request,
         email: str = Form(...),
         password: str = Form(...),
+        remember: str = Form(default=""),
     ) -> RedirectResponse:
         if _user_count() == 0:
             return RedirectResponse("/login?nousers=1", status_code=303)
@@ -156,6 +344,9 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
         request.session["role"] = row["role"]
         request.session["email"] = email
         request.session["student_row_id"] = row["student_row_id"]
+        # "Keep me signed in": persistent cookie when checked, browser-session
+        # cookie (cleared on browser close) when not. Read by RememberMeMiddleware.
+        request.session["_remember"] = bool(remember)
         write_audit(
             request,
             "login_ok",
@@ -184,8 +375,20 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
         if u["role"] != "admin":
             raise HTTPException(status_code=403, detail="Admin only")
         conn = _conn()
+        q = (request.query_params.get("q") or "").strip()
+        where, params = "", []
+        if q:
+            where = "WHERE name LIKE ? OR student_id LIKE ? OR email LIKE ?"
+            like = f"%{q}%"
+            params = [like, like, like]
+        total_students = int(
+            conn.execute(f"SELECT COUNT(*) FROM students {where};", params).fetchone()[0]
+        )
+        pg = _paginate(request, total_students)
         students = conn.execute(
-            "SELECT id, student_id, name, email FROM students ORDER BY id DESC LIMIT 200;"
+            f"SELECT id, student_id, name, email FROM students {where} "
+            "ORDER BY id DESC LIMIT ? OFFSET ?;",
+            (*params, pg["per_page"], pg["offset"]),
         ).fetchall()
         active_sessions = int(
             conn.execute("SELECT COUNT(*) FROM sessions WHERE end_time IS NULL;").fetchone()[0]
@@ -208,6 +411,8 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
             {
                 "user": u,
                 "students": students,
+                "pg": pg,
+                "q": q,
                 "active_sessions": active_sessions,
                 "pending_reviews": pending,
                 "spoof_pending": spoof_pending,
@@ -229,10 +434,10 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
         student_number: str = Form(...),
         email: str = Form(...),
         password: str = Form(...),
-        img_upper: str = Form(...),
-        img_left: str = Form(...),
-        img_right: str = Form(...),
-        img_lower: str = Form(...),
+        img_upper: str = Form(default=""),
+        img_left: str = Form(default=""),
+        img_right: str = Form(default=""),
+        img_lower: str = Form(default=""),
     ) -> RedirectResponse:
         u = _session_user(request)
         if not u or u["role"] != "admin":
@@ -250,10 +455,19 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
                 images_b64=images,
             )
             conn.commit()
-        except Exception as ex:
+        except ValueError as ex:
             conn.rollback()
             conn.close()
             request.session["flash_error"] = str(ex)[:500]
+            return RedirectResponse("/admin/students/new", status_code=303)
+        except Exception:
+            conn.rollback()
+            conn.close()
+            _log_exc("admin create student failed")
+            request.session["flash_error"] = (
+                "Something went wrong while creating the account. Please try again, "
+                "or contact an administrator if it keeps happening."
+            )
             return RedirectResponse("/admin/students/new", status_code=303)
         conn.close()
         return RedirectResponse("/admin?created=1", status_code=303)
@@ -455,22 +669,58 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
         u = _session_user(request)
         if not u or u["role"] != "admin":
             return RedirectResponse("/login", status_code=303)
-        show_all = request.query_params.get("all") == "1"
+        # Filters: status, free-text student search, spoof risk, date range.
+        status = (request.query_params.get("status") or "pending").lower()
+        if request.query_params.get("all") == "1" and "status" not in request.query_params:
+            status = "all"  # backward-compat with the old ?all=1 link
+        if status not in ("pending", "approved", "rejected", "all"):
+            status = "pending"
+        q = (request.query_params.get("q") or "").strip()
+        spoof = (request.query_params.get("spoof") or "").lower()
+        date_from = (request.query_params.get("from") or "").strip()
+        date_to = (request.query_params.get("to") or "").strip()
+
+        clauses, params = [], []
+        if status != "all":
+            clauses.append("d.status = ?")
+            params.append(status)
+        if q:
+            clauses.append("(s.name LIKE ? OR s.student_id LIKE ? OR u.email LIKE ?)")
+            like = f"%{q}%"
+            params += [like, like, like]
+        if spoof == "flagged":
+            clauses.append("d.spoof_risk IN ('medium', 'high')")
+        if date_from:
+            clauses.append("substr(d.submitted_at, 1, 10) >= ?")
+            params.append(date_from)
+        if date_to:
+            clauses.append("substr(d.submitted_at, 1, 10) <= ?")
+            params.append(date_to)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
         conn = _conn()
-        where = "" if show_all else "WHERE d.status = 'pending'"
+        base_from = (
+            "FROM daily_attendance d "
+            "JOIN students s ON s.id = d.student_row_id "
+            "JOIN users u ON u.id = d.user_id"
+        )
+        total_rows = int(
+            conn.execute(f"SELECT COUNT(*) {base_from} {where};", params).fetchone()[0]
+        )
+        pg = _paginate(request, total_rows)
         rows = conn.execute(
             f"""
             SELECT d.id, d.submitted_at, d.status, d.photo_path,
                    d.spoof_risk, d.spoof_score, d.spoof_detail,
                    d.identity_similarity, d.reject_reason,
+                   d.liveness_label, d.liveness_score, d.mask_flag, d.glasses_flag,
                    s.student_id, s.name, u.email AS student_email
-            FROM daily_attendance d
-            JOIN students s ON s.id = d.student_row_id
-            JOIN users u ON u.id = d.user_id
+            {base_from}
             {where}
             ORDER BY d.submitted_at DESC
-            LIMIT 200;
-            """
+            LIMIT ? OFFSET ?;
+            """,
+            (*params, pg["per_page"], pg["offset"]),
         ).fetchall()
         pending_count = int(
             conn.execute("SELECT COUNT(*) FROM daily_attendance WHERE status = 'pending';").fetchone()[0]
@@ -479,7 +729,17 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
         return templates.TemplateResponse(
             request,
             "admin_reviews.html",
-            {"user": u, "rows": rows, "show_all": show_all, "pending_count": pending_count},
+            {
+                "user": u,
+                "rows": rows,
+                "pg": pg,
+                "pending_count": pending_count,
+                "status": status,
+                "q": q,
+                "spoof": spoof,
+                "date_from": date_from,
+                "date_to": date_to,
+            },
         )
 
     @r.get("/admin/photo/{submission_id}")
@@ -675,6 +935,12 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
             return RedirectResponse("/admin", status_code=303)
         sid = u["student_row_id"]
         conn = _conn()
+        total_history = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM daily_attendance WHERE user_id = ?;", (u["id"],)
+            ).fetchone()[0]
+        )
+        pg = _paginate(request, total_history)
         rows = conn.execute(
             """
             SELECT d.id, d.submitted_at, d.status, d.photo_path, d.reject_reason,
@@ -684,9 +950,9 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
             LEFT JOIN classes c ON c.id = s.class_id
             WHERE d.user_id = ?
             ORDER BY d.submitted_at DESC
-            LIMIT 100;
+            LIMIT ? OFFSET ?;
             """,
-            (u["id"],),
+            (u["id"], pg["per_page"], pg["offset"]),
         ).fetchall()
         open_sessions = conn.execute(
             """
@@ -714,6 +980,7 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
             {
                 "user": u,
                 "rows": rows,
+                "pg": pg,
                 "open_sessions": open_sessions,
                 "submitted_session_ids": submitted_session_ids,
             },
@@ -808,8 +1075,39 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
             conn.commit()
             conn.close()
             return RedirectResponse(f"{back}&error=identity", status_code=303)
-        sp = assess_jpeg_bytes(data)
-        auto_ok = sp["risk"] in ("none", "low") and float(id_sim) >= 0.50
+        # Trained passive liveness (anti-spoof) + mask/glasses flags.
+        checks = face_checks.assess_selfie_bytes(root, data)
+        live = checks.get("liveness", {}) if checks.get("face") else {}
+        mask = checks.get("mask", {}) if checks.get("face") else {}
+        glasses = checks.get("glasses", {}) if checks.get("face") else {}
+        sp = assess_jpeg_bytes(data)  # heuristic cues kept as a secondary signal
+
+        liveness_label = live.get("label", "unknown")
+        liveness_score = live.get("real_score")
+        mask_flag = 1 if mask.get("flag") else 0
+        glasses_flag = 1 if glasses.get("flag") else 0
+
+        _ro = {"none": 0, "low": 1, "medium": 2, "high": 3}
+        eff_risk = max(live.get("risk", "none"), sp["risk"], key=lambda r: _ro.get(r, 0))
+        spoof_score_val = live.get("spoof_score") if live else sp["score"]
+
+        detail_bits = [f"liveness={liveness_label}"
+                       + (f"({liveness_score})" if liveness_score is not None else "")]
+        if mask_flag:
+            detail_bits.append("mask")
+        if glasses_flag:
+            detail_bits.append("glasses")
+        if sp.get("signals"):
+            detail_bits.append("cues:" + ",".join(sp["signals"]))
+        spoof_detail_val = (" | ".join(detail_bits))[:500]
+
+        block_glasses = os.environ.get("FLAG_GLASSES_BLOCK", "1").lower() not in ("0", "false", "no")
+        auto_ok = (
+            bool(live.get("is_real"))
+            and float(id_sim) >= 0.50
+            and not mask_flag
+            and not (block_glasses and glasses_flag)
+        )
         status = "approved" if auto_ok else "pending"
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         rel_dir = os.path.join("data", "portal", "daily", str(u["id"]))
@@ -826,9 +1124,10 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
             INSERT INTO daily_attendance (
                 user_id, student_row_id, photo_path, submitted_at, status,
                 spoof_risk, spoof_score, spoof_detail,
-                identity_similarity, photo_sha256, session_id
+                identity_similarity, photo_sha256, session_id,
+                liveness_label, liveness_score, mask_flag, glasses_flag
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 u["id"],
@@ -836,12 +1135,16 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
                 abs_path,
                 submitted,
                 status,
-                sp["risk"],
-                sp["score"],
-                sp["detail"],
+                eff_risk,
+                spoof_score_val,
+                spoof_detail_val,
                 float(id_sim),
                 sha,
                 session_id,
+                liveness_label,
+                liveness_score,
+                mask_flag,
+                glasses_flag,
             ),
         )
         new_id = int(cur.lastrowid)
@@ -963,18 +1266,39 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
             ORDER BY s.start_time DESC;
             """
         ).fetchall()
+        # Filters for the recent (closed) sessions list: class + date range.
+        f_class = (request.query_params.get("class_id") or "").strip()
+        date_from = (request.query_params.get("from") or "").strip()
+        date_to = (request.query_params.get("to") or "").strip()
+        clauses, params = ["s.end_time IS NOT NULL"], []
+        if f_class.isdigit():
+            clauses.append("s.class_id = ?")
+            params.append(int(f_class))
+        if date_from:
+            clauses.append("substr(s.start_time, 1, 10) >= ?")
+            params.append(date_from)
+        if date_to:
+            clauses.append("substr(s.start_time, 1, 10) <= ?")
+            params.append(date_to)
+        where = "WHERE " + " AND ".join(clauses)
+
+        total_recent = int(
+            conn.execute(f"SELECT COUNT(*) FROM sessions s {where};", params).fetchone()[0]
+        )
+        pg = _paginate(request, total_recent)
         recent = conn.execute(
-            """
+            f"""
             SELECT s.id, s.course, s.start_time, s.end_time, c.name AS class_name,
                    COUNT(d.id) AS attendance_count
             FROM sessions s
             LEFT JOIN classes c ON c.id = s.class_id
             LEFT JOIN daily_attendance d ON d.session_id = s.id AND d.status != 'rejected'
-            WHERE s.end_time IS NOT NULL
+            {where}
             GROUP BY s.id
             ORDER BY s.start_time DESC
-            LIMIT 30;
-            """
+            LIMIT ? OFFSET ?;
+            """,
+            (*params, pg["per_page"], pg["offset"]),
         ).fetchall()
         conn.close()
         flash = request.session.pop("flash_error", "")
@@ -986,7 +1310,11 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
                 "classes": classes,
                 "active": active,
                 "recent": recent,
+                "pg": pg,
                 "flash": flash,
+                "f_class": f_class,
+                "date_from": date_from,
+                "date_to": date_to,
             },
         )
 
@@ -1048,13 +1376,16 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
             SELECT status, COUNT(*) AS c FROM daily_attendance GROUP BY status ORDER BY c DESC;
             """
         ).fetchall()
+        total_audit = int(conn.execute("SELECT COUNT(*) FROM audit_events;").fetchone()[0])
+        pg = _paginate(request, total_audit)
         last_audit = conn.execute(
             """
             SELECT created_at, event_type, actor_user_id, detail
             FROM audit_events
             ORDER BY id DESC
-            LIMIT 100;
-            """
+            LIMIT ? OFFSET ?;
+            """,
+            (pg["per_page"], pg["offset"]),
         ).fetchall()
         conn.close()
         return templates.TemplateResponse(
@@ -1066,6 +1397,7 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
                 "spoof_counts": spoof_counts,
                 "status_counts": status_counts,
                 "last_audit": last_audit,
+                "pg": pg,
             },
         )
 
@@ -1077,6 +1409,8 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
         if not u or u["role"] != "admin":
             return RedirectResponse("/login", status_code=303)
         conn = _conn()
+        total_classes = int(conn.execute("SELECT COUNT(*) FROM classes;").fetchone()[0])
+        pg = _paginate(request, total_classes)
         classes = conn.execute(
             """
             SELECT c.id, c.name, c.description, c.created_at,
@@ -1084,13 +1418,15 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
             FROM classes c
             LEFT JOIN class_enrollments e ON e.class_id = c.id
             GROUP BY c.id
-            ORDER BY c.created_at DESC;
-            """
+            ORDER BY c.created_at DESC
+            LIMIT ? OFFSET ?;
+            """,
+            (pg["per_page"], pg["offset"]),
         ).fetchall()
         conn.close()
         flash = request.session.pop("flash_error", "")
         return templates.TemplateResponse(
-            request, "admin_classes.html", {"user": u, "classes": classes, "flash": flash}
+            request, "admin_classes.html", {"user": u, "classes": classes, "pg": pg, "flash": flash}
         )
 
     @r.post("/admin/classes/new")
@@ -1129,6 +1465,16 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
         if not cls:
             conn.close()
             raise HTTPException(status_code=404, detail="Class not found")
+        # Full enrolled-id set drives the "available students" exclusion below,
+        # so it must be computed independently of the paginated display slice.
+        enrolled_ids = {
+            row[0]
+            for row in conn.execute(
+                "SELECT student_row_id FROM class_enrollments WHERE class_id = ?;",
+                (class_id,),
+            ).fetchall()
+        }
+        pg = _paginate(request, len(enrolled_ids))
         enrolled = conn.execute(
             """
             SELECT e.id AS enrollment_id, s.id AS student_row_id,
@@ -1136,11 +1482,11 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
             FROM class_enrollments e
             JOIN students s ON s.id = e.student_row_id
             WHERE e.class_id = ?
-            ORDER BY s.name;
+            ORDER BY s.name
+            LIMIT ? OFFSET ?;
             """,
-            (class_id,),
+            (class_id, pg["per_page"], pg["offset"]),
         ).fetchall()
-        enrolled_ids = {r["student_row_id"] for r in enrolled}
         available = conn.execute(
             "SELECT id, student_id, name FROM students ORDER BY name;"
         ).fetchall()
@@ -1155,6 +1501,7 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
                 "cls": cls,
                 "enrolled": enrolled,
                 "available": available,
+                "pg": pg,
                 "flash": flash,
             },
         )
@@ -1240,10 +1587,10 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
         student_number: str = Form(...),
         email: str = Form(...),
         password: str = Form(...),
-        img_upper: str = Form(...),
-        img_left: str = Form(...),
-        img_right: str = Form(...),
-        img_lower: str = Form(...),
+        img_upper: str = Form(default=""),
+        img_left: str = Form(default=""),
+        img_right: str = Form(default=""),
+        img_lower: str = Form(default=""),
     ) -> RedirectResponse:
         if _session_user(request):
             return RedirectResponse("/", status_code=303)
@@ -1260,13 +1607,385 @@ def build_router(templates: Jinja2Templates, root: str) -> APIRouter:
                 images_b64=images,
             )
             conn.commit()
-        except Exception as ex:
+        except ValueError as ex:
             conn.rollback()
             conn.close()
             request.session["flash_error"] = str(ex)[:500]
             return RedirectResponse("/register-student", status_code=303)
+        except Exception:
+            conn.rollback()
+            conn.close()
+            _log_exc("self-registration failed")
+            request.session["flash_error"] = (
+                "Something went wrong while creating your account. Please try again, "
+                "or contact an administrator if it keeps happening."
+            )
+            return RedirectResponse("/register-student", status_code=303)
         conn.close()
         write_audit(request, "self_register", detail=f"email={email.strip().lower()}", target_type="user")
         return RedirectResponse("/login?registered=1", status_code=303)
+
+    # ══════════════════════════════════════════════════════════════════
+    # Messaging: student↔admin support threads + public group chat
+    # ══════════════════════════════════════════════════════════════════
+
+    def _now_ts() -> str:
+        return datetime.now().isoformat(timespec="seconds")
+
+    def _sender_name(conn: sqlite3.Connection, user: dict) -> str:
+        if user["role"] == "admin":
+            return "Admin"
+        sid = user.get("student_row_id")
+        if sid:
+            row = conn.execute("SELECT name FROM students WHERE id = ?;", (sid,)).fetchone()
+            if row and row["name"]:
+                return row["name"]
+        return (user.get("email") or "Student").split("@")[0]
+
+    def _msg_dict(row: sqlite3.Row, me_id: int) -> dict:
+        return {
+            "id": row["id"],
+            "role": row["sender_role"],
+            "name": row["sender_name"],
+            "body": row["body"],
+            "at": row["created_at"],
+            "mine": row["sender_user_id"] == me_id,
+        }
+
+    # ── Public group chat ─────────────────────────────────────────────
+    @r.get("/chat", response_class=HTMLResponse)
+    def group_chat_page(request: Request) -> Any:
+        u = _session_user(request)
+        if not u:
+            return RedirectResponse("/login", status_code=303)
+        conn = _conn()
+        rows = conn.execute(
+            "SELECT id, sender_user_id, sender_role, sender_name, body, created_at "
+            "FROM group_messages ORDER BY id DESC LIMIT 80;"
+        ).fetchall()
+        conn.close()
+        rows = list(reversed(rows))
+        return templates.TemplateResponse(
+            request, "group_chat.html",
+            {"user": u, "role": u["role"], "messages": rows, "me": u["id"]},
+        )
+
+    @r.post("/chat/send")
+    @limiter.limit("30/minute")
+    def group_chat_send(request: Request, body: str = Form(...)) -> Any:
+        u = _session_user(request)
+        if not u:
+            return JSONResponse({"error": "auth"}, status_code=401)
+        if u["role"] != "admin":
+            return JSONResponse(
+                {"ok": False, "error": "forbidden", "message": "Only admins can post announcements."},
+                status_code=403,
+            )
+        text = (body or "").strip()
+        if text:
+            conn = _conn()
+            name = _sender_name(conn, u)
+            conn.execute(
+                "INSERT INTO group_messages (sender_user_id, sender_role, sender_name, body, created_at) "
+                "VALUES (?, ?, ?, ?, ?);",
+                (u["id"], u["role"], name, text[:2000], _now_ts()),
+            )
+            conn.commit()
+            conn.close()
+        if request.headers.get("x-requested-with") == "fetch":
+            return JSONResponse({"ok": True})
+        return RedirectResponse("/chat", status_code=303)
+
+    @r.get("/chat/messages.json")
+    def group_chat_json(request: Request, after: int = 0) -> Any:
+        u = _session_user(request)
+        if not u:
+            return JSONResponse({"error": "auth"}, status_code=401)
+        conn = _conn()
+        rows = conn.execute(
+            "SELECT id, sender_user_id, sender_role, sender_name, body, created_at "
+            "FROM group_messages WHERE id > ? ORDER BY id ASC LIMIT 200;",
+            (after,),
+        ).fetchall()
+        conn.close()
+        return JSONResponse({"messages": [_msg_dict(r, u["id"]) for r in rows]})
+
+    @r.post("/chat/{message_id}/delete")
+    def group_chat_delete(request: Request, message_id: int) -> Any:
+        u = _session_user(request)
+        if not u or u["role"] != "admin":
+            return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
+        conn = _conn()
+        conn.execute("DELETE FROM group_messages WHERE id = ?;", (message_id,))
+        conn.commit()
+        conn.close()
+        if request.headers.get("x-requested-with") == "fetch":
+            return JSONResponse({"ok": True})
+        return RedirectResponse("/chat", status_code=303)
+
+    # ── Student support threads ───────────────────────────────────────
+    @r.get("/student/support", response_class=HTMLResponse)
+    def student_support(request: Request) -> Any:
+        u = _session_user(request)
+        if not u:
+            return RedirectResponse("/login", status_code=303)
+        if u["role"] != "student":
+            return RedirectResponse("/admin/support", status_code=303)
+        conn = _conn()
+        threads = conn.execute(
+            "SELECT t.*, (SELECT body FROM support_messages m WHERE m.thread_id = t.id "
+            "ORDER BY m.id DESC LIMIT 1) AS last_body "
+            "FROM support_threads t WHERE t.user_id = ? ORDER BY t.last_message_at DESC;",
+            (u["id"],),
+        ).fetchall()
+        conn.close()
+        return templates.TemplateResponse(
+            request, "student_support.html",
+            {"user": u, "role": u["role"], "threads": threads,
+             "topics": SUPPORT_TOPICS, "topic_labels": dict(SUPPORT_TOPICS)},
+        )
+
+    @r.post("/student/support/new")
+    @limiter.limit("10/minute")
+    def student_support_new(
+        request: Request,
+        topic: str = Form(...),
+        subject: str = Form(...),
+        body: str = Form(...),
+    ) -> Any:
+        u = _session_user(request)
+        if not u or u["role"] != "student":
+            return RedirectResponse("/login", status_code=303)
+        topic = topic if topic in SUPPORT_TOPIC_KEYS else "support"
+        subject = (subject or "").strip()[:160] or "Support request"
+        text = (body or "").strip()
+        if not text:
+            request.session["flash_error"] = "Please type your message."
+            return RedirectResponse("/student/support", status_code=303)
+        conn = _conn()
+        now = _now_ts()
+        name = _sender_name(conn, u)
+        cur = conn.execute(
+            "INSERT INTO support_threads "
+            "(student_row_id, user_id, topic, subject, status, created_at, last_message_at, admin_unread, student_unread) "
+            "VALUES (?, ?, ?, ?, 'open', ?, ?, 1, 0);",
+            (u.get("student_row_id"), u["id"], topic, subject, now, now),
+        )
+        tid = cur.lastrowid
+        conn.execute(
+            "INSERT INTO support_messages (thread_id, sender_user_id, sender_role, sender_name, body, created_at) "
+            "VALUES (?, ?, 'student', ?, ?, ?);",
+            (tid, u["id"], name, text[:2000], now),
+        )
+        conn.commit()
+        conn.close()
+        return RedirectResponse(f"/student/support/{tid}", status_code=303)
+
+    @r.get("/student/support/{thread_id}", response_class=HTMLResponse)
+    def student_support_thread(request: Request, thread_id: int) -> Any:
+        u = _session_user(request)
+        if not u or u["role"] != "student":
+            return RedirectResponse("/login", status_code=303)
+        conn = _conn()
+        t = conn.execute(
+            "SELECT * FROM support_threads WHERE id = ? AND user_id = ?;", (thread_id, u["id"])
+        ).fetchone()
+        if not t:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Thread not found")
+        msgs = conn.execute(
+            "SELECT * FROM support_messages WHERE thread_id = ? ORDER BY id ASC;", (thread_id,)
+        ).fetchall()
+        conn.execute("UPDATE support_threads SET student_unread = 0 WHERE id = ?;", (thread_id,))
+        conn.commit()
+        conn.close()
+        return templates.TemplateResponse(
+            request, "support_thread.html",
+            {"user": u, "role": u["role"], "thread": t, "messages": msgs,
+             "is_admin": False, "me": u["id"], "topic_labels": dict(SUPPORT_TOPICS)},
+        )
+
+    @r.post("/student/support/{thread_id}/reply")
+    @limiter.limit("30/minute")
+    def student_support_reply(request: Request, thread_id: int, body: str = Form(...)) -> Any:
+        u = _session_user(request)
+        if not u or u["role"] != "student":
+            return JSONResponse({"error": "auth"}, status_code=401)
+        text = (body or "").strip()
+        conn = _conn()
+        t = conn.execute("SELECT id FROM support_threads WHERE id = ? AND user_id = ?;", (thread_id, u["id"])).fetchone()
+        if not t:
+            conn.close()
+            raise HTTPException(status_code=404)
+        if text:
+            name = _sender_name(conn, u)
+            now = _now_ts()
+            conn.execute(
+                "INSERT INTO support_messages (thread_id, sender_user_id, sender_role, sender_name, body, created_at) "
+                "VALUES (?, ?, 'student', ?, ?, ?);",
+                (thread_id, u["id"], name, text[:2000], now),
+            )
+            conn.execute(
+                "UPDATE support_threads SET last_message_at = ?, admin_unread = admin_unread + 1, "
+                "student_unread = 0, status = 'open' WHERE id = ?;",
+                (now, thread_id),
+            )
+            conn.commit()
+        conn.close()
+        if request.headers.get("x-requested-with") == "fetch":
+            return JSONResponse({"ok": True})
+        return RedirectResponse(f"/student/support/{thread_id}", status_code=303)
+
+    # ── Admin support inbox ───────────────────────────────────────────
+    @r.get("/admin/support", response_class=HTMLResponse)
+    def admin_support(request: Request) -> Any:
+        u = _session_user(request)
+        if not u or u["role"] != "admin":
+            return RedirectResponse("/login", status_code=303)
+        status = (request.query_params.get("status") or "open").lower()
+        if status not in ("open", "closed", "all"):
+            status = "open"
+        topic = (request.query_params.get("topic") or "").lower()
+        q = (request.query_params.get("q") or "").strip()
+        clauses, params = [], []
+        if status != "all":
+            clauses.append("t.status = ?")
+            params.append(status)
+        if topic in SUPPORT_TOPIC_KEYS:
+            clauses.append("t.topic = ?")
+            params.append(topic)
+        if q:
+            clauses.append("(t.subject LIKE ? OR s.name LIKE ? OR s.student_id LIKE ?)")
+            like = f"%{q}%"
+            params += [like, like, like]
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        conn = _conn()
+        base_from = "FROM support_threads t LEFT JOIN students s ON s.id = t.student_row_id"
+        total = int(conn.execute(f"SELECT COUNT(*) {base_from} {where};", params).fetchone()[0])
+        pg = _paginate(request, total)
+        threads = conn.execute(
+            f"SELECT t.*, s.name AS student_name, s.student_id AS student_number "
+            f"{base_from} {where} ORDER BY t.last_message_at DESC LIMIT ? OFFSET ?;",
+            (*params, pg["per_page"], pg["offset"]),
+        ).fetchall()
+        open_count = int(conn.execute("SELECT COUNT(*) FROM support_threads WHERE status = 'open';").fetchone()[0])
+        conn.close()
+        return templates.TemplateResponse(
+            request, "admin_support.html",
+            {"user": u, "role": u["role"], "threads": threads, "pg": pg,
+             "status": status, "topic": topic, "q": q, "open_count": open_count,
+             "topics": SUPPORT_TOPICS, "topic_labels": dict(SUPPORT_TOPICS)},
+        )
+
+    @r.get("/admin/support/{thread_id}", response_class=HTMLResponse)
+    def admin_support_thread(request: Request, thread_id: int) -> Any:
+        u = _session_user(request)
+        if not u or u["role"] != "admin":
+            return RedirectResponse("/login", status_code=303)
+        conn = _conn()
+        t = conn.execute(
+            "SELECT t.*, s.name AS student_name, s.student_id AS student_number "
+            "FROM support_threads t LEFT JOIN students s ON s.id = t.student_row_id WHERE t.id = ?;",
+            (thread_id,),
+        ).fetchone()
+        if not t:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Thread not found")
+        msgs = conn.execute(
+            "SELECT * FROM support_messages WHERE thread_id = ? ORDER BY id ASC;", (thread_id,)
+        ).fetchall()
+        conn.execute("UPDATE support_threads SET admin_unread = 0 WHERE id = ?;", (thread_id,))
+        conn.commit()
+        conn.close()
+        return templates.TemplateResponse(
+            request, "support_thread.html",
+            {"user": u, "role": u["role"], "thread": t, "messages": msgs,
+             "is_admin": True, "me": u["id"], "topic_labels": dict(SUPPORT_TOPICS)},
+        )
+
+    @r.post("/admin/support/{thread_id}/reply")
+    @limiter.limit("60/minute")
+    def admin_support_reply(request: Request, thread_id: int, body: str = Form(...)) -> Any:
+        u = _session_user(request)
+        if not u or u["role"] != "admin":
+            return JSONResponse({"error": "auth"}, status_code=401)
+        text = (body or "").strip()
+        conn = _conn()
+        t = conn.execute("SELECT id FROM support_threads WHERE id = ?;", (thread_id,)).fetchone()
+        if not t:
+            conn.close()
+            raise HTTPException(status_code=404)
+        if text:
+            now = _now_ts()
+            conn.execute(
+                "INSERT INTO support_messages (thread_id, sender_user_id, sender_role, sender_name, body, created_at) "
+                "VALUES (?, ?, 'admin', 'Admin', ?, ?);",
+                (thread_id, u["id"], text[:2000], now),
+            )
+            conn.execute(
+                "UPDATE support_threads SET last_message_at = ?, student_unread = student_unread + 1, "
+                "admin_unread = 0 WHERE id = ?;",
+                (now, thread_id),
+            )
+            conn.commit()
+        conn.close()
+        if request.headers.get("x-requested-with") == "fetch":
+            return JSONResponse({"ok": True})
+        return RedirectResponse(f"/admin/support/{thread_id}", status_code=303)
+
+    @r.post("/admin/support/{thread_id}/status")
+    def admin_support_status(request: Request, thread_id: int, action: str = Form(...)) -> Any:
+        u = _session_user(request)
+        if not u or u["role"] != "admin":
+            return RedirectResponse("/login", status_code=303)
+        new_status = "closed" if action == "close" else "open"
+        conn = _conn()
+        conn.execute("UPDATE support_threads SET status = ? WHERE id = ?;", (new_status, thread_id))
+        conn.commit()
+        conn.close()
+        return RedirectResponse(f"/admin/support/{thread_id}", status_code=303)
+
+    # ── Shared JSON poll for a thread's messages (auth-checked) ───────
+    @r.get("/support/{thread_id}/messages.json")
+    def support_thread_json(request: Request, thread_id: int, after: int = 0) -> Any:
+        u = _session_user(request)
+        if not u:
+            return JSONResponse({"error": "auth"}, status_code=401)
+        conn = _conn()
+        t = conn.execute("SELECT user_id FROM support_threads WHERE id = ?;", (thread_id,)).fetchone()
+        if not t:
+            conn.close()
+            return JSONResponse({"error": "notfound"}, status_code=404)
+        if u["role"] != "admin" and t["user_id"] != u["id"]:
+            conn.close()
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        rows = conn.execute(
+            "SELECT id, sender_user_id, sender_role, sender_name, body, created_at "
+            "FROM support_messages WHERE thread_id = ? AND id > ? ORDER BY id ASC LIMIT 200;",
+            (thread_id, after),
+        ).fetchall()
+        if u["role"] == "admin":
+            conn.execute("UPDATE support_threads SET admin_unread = 0 WHERE id = ?;", (thread_id,))
+        else:
+            conn.execute("UPDATE support_threads SET student_unread = 0 WHERE id = ?;", (thread_id,))
+        conn.commit()
+        conn.close()
+        return JSONResponse({"messages": [_msg_dict(rr, u["id"]) for rr in rows]})
+
+    # ── Nav unread badge counts ───────────────────────────────────────
+    @r.get("/api/notifications.json")
+    def notifications_json(request: Request) -> Any:
+        u = _session_user(request)
+        if not u:
+            return JSONResponse({"support": 0})
+        conn = _conn()
+        if u["role"] == "admin":
+            n = int(conn.execute("SELECT COUNT(*) FROM support_threads WHERE admin_unread > 0;").fetchone()[0])
+        else:
+            n = int(conn.execute(
+                "SELECT COUNT(*) FROM support_threads WHERE user_id = ? AND student_unread > 0;", (u["id"],)
+            ).fetchone()[0])
+        conn.close()
+        return JSONResponse({"support": n})
 
     return r

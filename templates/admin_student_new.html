@@ -9,105 +9,91 @@
 {% if flash %}
 <div class="alert alert-danger"><p>{{ flash }}</p></div>
 {% endif %}
+<div class="alert alert-danger reg-clienterror" id="clientError" role="alert" hidden><p></p></div>
 
-<form id="f" class="camera-layout" method="post" action="/admin/students/new">
-  <section class="camera-card" aria-labelledby="capture-title">
-    <div class="panel-header">
-      <div>
-        <h2 id="capture-title">Face enrollment</h2>
-        <p>Capture upper, left, right, and lower head angles. All four are required.</p>
+<div class="panel reg-panel">
+  <form id="f" class="reg-grid" method="post" action="/admin/students/new" novalidate>
+    <!-- ── Camera / capture column ───────────────────────────────── -->
+    <div class="reg-capture">
+      <div class="reg-stage" id="stage" data-state="loading">
+        <video id="vid" class="reg-video" autoplay playsinline muted></video>
+        <div class="reg-guide" aria-hidden="true">
+          <span class="reg-ring"></span>
+          <span class="reg-arrow" id="poseArrow"></span>
+        </div>
+        <div class="reg-flash" id="flash" aria-hidden="true"></div>
+        <span class="reg-facebadge" id="faceBadge" hidden>Face detected</span>
+      </div>
+
+      <p id="status" class="reg-status" role="status" aria-live="polite">Starting camera…</p>
+
+      <div class="reg-controls">
+        <button class="btn reg-shoot" type="button" id="shootBtn" disabled>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9Zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+          <span id="shootLabel">Capture upper</span>
+        </button>
+        <button class="btn btn-ghost reg-icon-btn" type="button" id="flipBtn" title="Switch camera" hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 5V2L8 6l4 4V7a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7Zm0 14v3l4-4-4-4v3a5 5 0 0 1-5-5H5a7 7 0 0 0 7 7Z"/></svg>
+          <span class="sr-only">Switch camera</span>
+        </button>
+        <button class="btn btn-ghost reg-icon-btn" type="button" id="uploadBtn" title="Upload a photo instead">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 3 7 8h3v6h4V8h3l-5-5ZM5 18v2h14v-2H5Z"/></svg>
+          <span class="sr-only">Upload a photo for this angle</span>
+        </button>
+        <input type="file" id="fileInput" accept="image/*" hidden />
+      </div>
+
+      <ol class="reg-thumbs" id="thumbs"></ol>
+    </div>
+
+    <!-- ── Details column ────────────────────────────────────────── -->
+    <div class="reg-details">
+      <div class="reg-progress" id="progress">
+        <div class="reg-progress-bar"><span id="progressFill"></span></div>
+        <span class="reg-progress-text" id="progressText">0 of 4 angles captured</span>
+      </div>
+
+      <div class="form-grid">
+        <label class="field">Full name
+          <input name="full_name" id="full_name" type="text" autocomplete="off" required />
+        </label>
+        <label class="field">Student number
+          <input name="student_number" id="student_number" type="text" inputmode="numeric" autocomplete="off" required />
+        </label>
+        <label class="field">Student email
+          <input name="email" id="email" type="email" autocomplete="off" required />
+          <span class="help-text reg-fieldnote" id="emailNote" hidden></span>
+        </label>
+        <label class="field">Student password
+          <span class="reg-pw">
+            <input name="password" id="password" type="password" minlength="6" autocomplete="new-password" required />
+            <button class="reg-pw-toggle" type="button" id="pwToggle" aria-label="Show password">Show</button>
+          </span>
+          <span class="reg-strength" id="pwStrength" hidden>
+            <span class="reg-strength-bar"><i id="pwBar"></i></span>
+            <span class="reg-strength-label" id="pwLabel"></span>
+          </span>
+          <span class="help-text">Minimum 6 characters.</span>
+        </label>
+      </div>
+
+      <input type="hidden" name="img_upper" id="img_upper" />
+      <input type="hidden" name="img_left" id="img_left" />
+      <input type="hidden" name="img_right" id="img_right" />
+      <input type="hidden" name="img_lower" id="img_lower" />
+
+      <div class="form-actions">
+        <button class="btn reg-submit" type="submit" id="submitBtn" disabled>
+          <span class="reg-spinner" aria-hidden="true"></span>
+          <span id="submitLabel">Create account</span>
+        </button>
+        <a class="btn btn-ghost" href="/admin">Cancel</a>
       </div>
     </div>
-
-    <video id="vid" class="camera-preview" autoplay playsinline muted></video>
-
-    <div class="pose-grid camera-toolbar">
-      <button class="btn btn-ghost pose-button" type="button" data-pose="upper">Capture upper</button>
-      <button class="btn btn-ghost pose-button" type="button" data-pose="left">Capture left</button>
-      <button class="btn btn-ghost pose-button" type="button" data-pose="right">Capture right</button>
-      <button class="btn btn-ghost pose-button" type="button" data-pose="lower">Capture lower</button>
-    </div>
-
-    <p id="status" class="progress-text" role="status">Starting camera...</p>
-  </section>
-
-  <section class="panel" aria-labelledby="student-details-title">
-    <div class="panel-header">
-      <div>
-        <h2 id="student-details-title">Student details</h2>
-        <p>These values create the student profile and login account.</p>
-      </div>
-    </div>
-
-    <div class="form-grid">
-      <label class="field">Full name
-        <input name="full_name" type="text" required />
-      </label>
-      <label class="field">Student number
-        <input name="student_number" type="text" required />
-      </label>
-      <label class="field">Student email
-        <input name="email" type="email" autocomplete="email" required />
-      </label>
-      <label class="field">Student password
-        <input name="password" type="password" autocomplete="new-password" minlength="6" required />
-        <span class="help-text">Minimum 6 characters.</span>
-      </label>
-    </div>
-
-    <input type="hidden" name="img_upper" id="img_upper" />
-    <input type="hidden" name="img_left" id="img_left" />
-    <input type="hidden" name="img_right" id="img_right" />
-    <input type="hidden" name="img_lower" id="img_lower" />
-
-    <div class="form-actions">
-      <button class="btn" type="submit" id="submitBtn" disabled>Create account</button>
-      <a class="btn btn-ghost" href="/admin">Cancel</a>
-    </div>
-  </section>
-</form>
+  </form>
+</div>
 {% endblock %}
 
 {% block scripts %}
-<script>
-  const poses = ["upper", "left", "right", "lower"];
-  const filled = {};
-  const video = document.getElementById("vid");
-  const status = document.getElementById("status");
-  const submitBtn = document.getElementById("submitBtn");
-
-  async function start() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-      video.srcObject = stream;
-      status.textContent = "Camera on. Capture all four angles.";
-    } catch (e) {
-      status.textContent = "Camera error: " + e;
-    }
-  }
-  start();
-
-  function drawVideoMirrored(ctx, videoEl, w, h) {
-    ctx.save(); ctx.translate(w, 0); ctx.scale(-1, 1);
-    ctx.drawImage(videoEl, 0, 0, w, h); ctx.restore();
-  }
-
-  function snap(pose, btn) {
-    const c = document.createElement("canvas");
-    c.width = video.videoWidth || 640;
-    c.height = video.videoHeight || 480;
-    const ctx = c.getContext("2d");
-    drawVideoMirrored(ctx, video, c.width, c.height);
-    document.getElementById("img_" + pose).value = c.toDataURL("image/jpeg", 0.92);
-    filled[pose] = true;
-    btn.classList.add("is-done");
-    btn.textContent = pose.charAt(0).toUpperCase() + pose.slice(1) + " saved";
-    status.textContent = Object.keys(filled).length + "/4 angles captured.";
-    submitBtn.disabled = poses.some(p => !filled[p]);
-  }
-
-  document.querySelectorAll("button[data-pose]").forEach(btn => {
-    btn.addEventListener("click", () => snap(btn.getAttribute("data-pose"), btn));
-  });
-</script>
+<script src="/static/js/face-capture.js?v=20260612" defer></script>
 {% endblock %}

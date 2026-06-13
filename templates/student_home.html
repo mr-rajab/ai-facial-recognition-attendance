@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import pager with context %}
 
 {% block title %}My Attendance - Attendance Portal{% endblock %}
 {% block eyebrow %}Student{% endblock %}
@@ -74,5 +75,6 @@
       </tbody>
     </table>
   </div>
+  {{ pager(pg) }}
 </section>
 {% endblock %}

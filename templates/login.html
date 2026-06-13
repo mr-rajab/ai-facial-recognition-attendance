@@ -4,6 +4,10 @@
 {% block body_class %}auth-page{% endblock %}
 
 {% block body %}
+<button class="theme-toggle theme-toggle-floating" type="button" data-theme-toggle aria-label="Toggle dark mode" title="Toggle dark mode">
+  <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+  <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-13.5V2m0 20v-1.5M4.2 4.2 5.3 5.3m13.4 13.4 1.1 1.1M3.5 12H2m20 0h-1.5M4.2 19.8l1.1-1.1M18.7 5.3l1.1-1.1"/></svg>
+</button>
 <main class="auth-shell login-shell" id="main">
   <section class="login-experience" aria-labelledby="login-title">
     <aside class="login-visual" aria-label="Attendance Portal overview">
@@ -21,15 +25,19 @@
         </div>
         <div class="recognition-camera">
           <div class="face-frame">
-            <span class="corner corner-tl"></span>
-            <span class="corner corner-tr"></span>
-            <span class="corner corner-bl"></span>
-            <span class="corner corner-br"></span>
-            <svg viewBox="0 0 160 160" focusable="false">
-              <path d="M80 30c-24 0-42 18-42 44 0 28 18 50 42 50s42-22 42-50c0-26-18-44-42-44Z" />
-              <path d="M54 116c8-16 17-24 26-24s18 8 26 24" />
-              <path d="M58 73h.1M102 73h.1" />
-              <path d="M68 91c8 6 16 6 24 0" />
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M9 16C9.85038 16.6303 10.8846 17 12 17C13.1154 17 14.1496 16.6303 15 16" stroke="currentColor" stroke-linecap="round" />
+              <ellipse cx="15" cy="10.5" rx="1" ry="1.5" fill="currentColor" stroke="none" />
+              <ellipse cx="9" cy="10.5" rx="1" ry="1.5" fill="currentColor" stroke="none" />
+              <path opacity="0.5" d="M22 14C22 17.7712 22 19.6569 20.8284 20.8284C19.6569 22 17.7712 22 14 22" stroke="currentColor" stroke-linecap="round" />
+              <path opacity="0.5" d="M10 22C6.22876 22 4.34315 22 3.17157 20.8284C2 19.6569 2 17.7712 2 14" stroke="currentColor" stroke-linecap="round" />
+              <path opacity="0.5" d="M10 2C6.22876 2 4.34315 2 3.17157 3.17157C2 4.34315 2 6.22876 2 10" stroke="currentColor" stroke-linecap="round" />
+              <path opacity="0.5" d="M14 2C17.7712 2 19.6569 2 20.8284 3.17157C22 4.34315 22 6.22876 22 10" stroke="currentColor" stroke-linecap="round" />
+
+
+
+
+
             </svg>
           </div>
           <div class="scan-line"></div>
@@ -120,6 +128,10 @@ BOOTSTRAP_ADMIN_PASSWORD=your-secure-password</pre>
             </svg>
           </button>
         </span>
+      </label>
+      <label class="login-remember" for="remember">
+        <input type="checkbox" id="remember" name="remember" value="1" checked {% if user_count == 0 %}disabled{% endif %} />
+        <span>Keep me signed in on this device</span>
       </label>
       <button class="btn login-submit" type="submit" {% if user_count == 0 %}disabled{% endif %}>
         <span>Sign in</span>

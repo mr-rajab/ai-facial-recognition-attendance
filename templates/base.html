@@ -4,7 +4,20 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Attendance Portal{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/app.css" />
+  <script>
+    /* Apply the saved/system theme before first paint (no flash). */
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (t !== "light" && t !== "dark") {
+          t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+  <meta name="theme-color" content="#0f766e" />
+  <link rel="stylesheet" href="/static/css/app.css?v=20260619" />
 </head>
 <body class="{% block body_class %}{% endblock %}">
   {% block body %}
@@ -36,8 +49,12 @@
           <a class="nav-link {{ 'is-active' if path.startswith('/admin/sessions') or path.startswith('/sessions') else '' }}" href="/admin/sessions">Sessions</a>
           <a class="nav-link {{ 'is-active' if path.startswith('/admin/reviews') else '' }}" href="/admin/reviews">Reviews</a>
           <a class="nav-link {{ 'is-active' if path.startswith('/admin/analytics') else '' }}" href="/admin/analytics">Analytics</a>
+          <a class="nav-link {{ 'is-active' if path.startswith('/admin/support') else '' }}" href="/admin/support">Support <span class="nav-badge" data-support-badge hidden></span></a>
+          <a class="nav-link {{ 'is-active' if path == '/chat' else '' }}" href="/chat">Announcements</a>
         {% elif user is defined and user and user.role == "student" %}
           <a class="nav-link {{ 'is-active' if path == '/student' else '' }}" href="/student">My Attendance</a>
+          <a class="nav-link {{ 'is-active' if path.startswith('/student/support') else '' }}" href="/student/support">Support <span class="nav-badge" data-support-badge hidden></span></a>
+          <a class="nav-link {{ 'is-active' if path == '/chat' else '' }}" href="/chat">Announcements</a>
         {% elif role is defined and role == "admin" %}
           <a class="nav-link {{ 'is-active' if path == '/admin' else '' }}" href="/admin">Dashboard</a>
           <a class="nav-link {{ 'is-active' if path.startswith('/admin/sessions') or path.startswith('/sessions') else '' }}" href="/admin/sessions">Sessions</a>
@@ -50,6 +67,10 @@
         {% elif role is defined %}
           <span class="user-pill">{{ role }}</span>
         {% endif %}
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle dark mode" title="Toggle dark mode">
+          <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-13.5V2m0 20v-1.5M4.2 4.2 5.3 5.3m13.4 13.4 1.1 1.1M3.5 12H2m20 0h-1.5M4.2 19.8l1.1-1.1M18.7 5.3l1.1-1.1"/></svg>
+        </button>
         <a class="btn btn-ghost btn-sm" href="/logout">Log out</a>
       </div>
     </header>
@@ -73,7 +94,7 @@
     </main>
   </div>
   {% endblock %}
-  <script src="/static/js/app.js" defer></script>
+  <script src="/static/js/app.js?v=20260614" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import pager with context %}
 
 {% block title %}{{ cls.name }} - Attendance Portal{% endblock %}
 {% block eyebrow %}Class roster{% endblock %}
@@ -22,9 +23,9 @@
     <div class="panel-header">
       <div>
         <h2>Enrolled students</h2>
-        <p>{{ enrolled | length }} student{{ 's' if enrolled | length != 1 else '' }} in this class.</p>
+        <p>{{ pg.total }} student{{ 's' if pg.total != 1 else '' }} in this class.</p>
       </div>
-      <span class="badge badge-blue">{{ enrolled | length }}</span>
+      <span class="badge badge-blue">{{ pg.total }}</span>
     </div>
 
     {% if enrolled %}
@@ -46,6 +47,7 @@
         </tbody>
       </table>
     </div>
+    {{ pager(pg) }}
     {% else %}
     <div class="empty-state">No students enrolled yet.</div>
     {% endif %}

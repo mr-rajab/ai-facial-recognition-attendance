@@ -1,16 +1,10 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import pager with context %}
 
 {% block title %}Attendance Reviews - Attendance Portal{% endblock %}
 {% block eyebrow %}Admin{% endblock %}
 {% block heading %}Attendance Review Queue{% endblock %}
 {% block description %}Review submissions that need human approval because of low similarity or replay-risk signals.{% endblock %}
-{% block page_actions %}
-  {% if show_all %}
-  <a class="btn btn-ghost" href="/admin/reviews">Show pending only</a>
-  {% else %}
-  <a class="btn btn-ghost" href="/admin/reviews?all=1">Show all submissions</a>
-  {% endif %}
-{% endblock %}
 
 {% block content %}
 <div class="alert alert-info">
@@ -20,24 +14,54 @@
 <section class="panel">
   <div class="panel-header">
     <div>
-      <h2>{% if show_all %}All submissions{% else %}Pending submissions{% endif %}</h2>
-      <p>
-        {% if show_all %}
-          Showing the latest submissions.
-        {% else %}
-          <strong>{{ pending_count }}</strong> submission{{ 's' if pending_count != 1 else '' }} pending review.
-        {% endif %}
-      </p>
+      <h2>{{ status|capitalize if status != 'all' else 'All' }} submissions</h2>
+      <p><strong>{{ pending_count }}</strong> submission{{ 's' if pending_count != 1 else '' }} pending review in total.</p>
     </div>
-    {% if not show_all %}<span class="badge badge-amber">{{ pending_count }} pending</span>{% endif %}
+    <span class="badge badge-amber">{{ pending_count }} pending</span>
   </div>
+
+  <form class="filter-bar" method="get" action="/admin/reviews" role="search">
+    <label class="field filter-grow">
+      <span>Search student</span>
+      <input type="search" name="q" value="{{ q }}" placeholder="Name, student number, or email" autocomplete="off" />
+    </label>
+    <label class="field filter-sm">
+      <span>Status</span>
+      <select name="status">
+        <option value="pending"  {{ 'selected' if status == 'pending' }}>Pending</option>
+        <option value="approved" {{ 'selected' if status == 'approved' }}>Approved</option>
+        <option value="rejected" {{ 'selected' if status == 'rejected' }}>Rejected</option>
+        <option value="all"      {{ 'selected' if status == 'all' }}>All</option>
+      </select>
+    </label>
+    <label class="field filter-sm">
+      <span>Replay risk</span>
+      <select name="spoof">
+        <option value="">Any</option>
+        <option value="flagged" {{ 'selected' if spoof == 'flagged' }}>Flagged (med/high)</option>
+      </select>
+    </label>
+    <label class="field filter-sm">
+      <span>From</span>
+      <input type="date" name="from" value="{{ date_from }}" />
+    </label>
+    <label class="field filter-sm">
+      <span>To</span>
+      <input type="date" name="to" value="{{ date_to }}" />
+    </label>
+    <input type="hidden" name="per_page" value="{{ pg.per_page }}" />
+    <div class="filter-actions">
+      <button class="btn btn-sm" type="submit">Apply</button>
+      <a class="btn btn-ghost btn-sm" href="/admin/reviews">Reset</a>
+    </div>
+  </form>
 
   <div class="table-wrap">
     <table class="data-table table-compact">
       <thead>
         <tr>
           <th>ID</th><th>When</th><th>Student</th><th>Status</th>
-          <th>Face match</th><th>Replay check</th><th>Flag reason</th>
+          <th>Face match</th><th>Liveness</th><th>Flag reason</th>
           <th>Photo</th><th>Actions</th>
         </tr>
       </thead>
@@ -56,18 +80,21 @@
             {% else %}-{% endif %}
           </td>
           <td class="meta">
-            {% if r.spoof_risk == 'high' %}<span class="status-badge risk-high">High</span>
+            {% if r.liveness_label == 'live' %}<span class="status-badge risk-low">LIVE</span>
+            {% elif r.liveness_label in ('print', 'replay') %}<span class="status-badge risk-high">{{ r.liveness_label|upper }}</span>
+            {% elif r.spoof_risk == 'high' %}<span class="status-badge risk-high">High</span>
             {% elif r.spoof_risk == 'medium' %}<span class="status-badge risk-medium">Medium</span>
-            {% elif r.spoof_risk == 'low' %}<span class="status-badge risk-low">Low</span>
-            {% else %}<span class="status-badge risk-none">None</span>{% endif %}
-            {% if r.spoof_score is not none %}<br>Score {{ "%.2f"|format(r.spoof_score) }}{% endif %}
-            {% if r.spoof_detail %}<br>{{ r.spoof_detail[:80] }}{% if r.spoof_detail|length > 80 %}...{% endif %}{% endif %}
+            {% else %}<span class="status-badge risk-none">—</span>{% endif %}
+            {% if r.liveness_score is not none %}<br>{{ "%.0f%%"|format(r.liveness_score * 100) }} live{% endif %}
+            {% if r.spoof_detail %}<br><span class="meta">{{ r.spoof_detail[:70] }}{% if r.spoof_detail|length > 70 %}…{% endif %}</span>{% endif %}
           </td>
           <td>
-            {% if r.spoof_risk in ('medium', 'high') %}<span class="status-badge risk-flag">Suspected replay</span><br>{% endif %}
+            {% if r.liveness_label in ('print', 'replay') %}<span class="status-badge risk-flag">Fake: {{ r.liveness_label }}</span><br>{% endif %}
+            {% if r.mask_flag %}<span class="status-badge risk-medium">Mask</span><br>{% endif %}
+            {% if r.glasses_flag %}<span class="status-badge risk-medium">Glasses</span><br>{% endif %}
             {% if low_sim %}<span class="status-badge risk-flag">Low similarity</span><br>{% endif %}
             {% if r.status == 'rejected' and r.reject_reason %}<span class="meta">Rejected: {{ r.reject_reason[:50] }}{% if r.reject_reason|length > 50 %}...{% endif %}</span>{% endif %}
-            {% if r.spoof_risk not in ('medium', 'high') and not low_sim and r.status != 'rejected' %}-{% endif %}
+            {% if r.liveness_label not in ('print', 'replay') and not r.mask_flag and not r.glasses_flag and not low_sim and r.status != 'rejected' %}-{% endif %}
           </td>
           <td>
             <a href="/admin/photo/{{ r.id }}" target="_blank" rel="noopener">
@@ -92,11 +119,12 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="9"><div class="empty-state">{% if show_all %}No submissions yet.{% else %}No submissions pending review.{% endif %}</div></td>
+          <td colspan="9"><div class="empty-state">No submissions match these filters. <a href="/admin/reviews">Reset</a>.</div></td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  {{ pager(pg) }}
 </section>
 {% endblock %}
